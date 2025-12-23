@@ -1,0 +1,1 @@
+# This app uses models from other apps, no custom models needed
