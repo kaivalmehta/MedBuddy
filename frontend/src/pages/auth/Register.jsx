@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../context/AuthContext'
+import { registerUser } from '../../services/api'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -14,18 +15,35 @@ export default function Register() {
   const password = watch('password')
 
   const onSubmit = async (data) => {
-    setLoading(true)
-    setError('')
-    try {
-      // TODO: Call real backend API
-      await login(data.email, data.password)
-      navigate('/dashboard')
-    } catch (err) {
+  setLoading(true)
+  setError('')
+
+  try {
+    // 1️⃣ Register user
+    await registerUser(data)
+
+    // 2️⃣ Login after successful registration
+    await login(data.email, data.password)
+
+    // 3️⃣ Redirect
+    navigate('/dashboard')
+
+  } catch (err) {
+    console.error('REGISTER ERROR:', err.response?.data)
+
+    if (err.response?.data) {
+      const messages = Object.entries(err.response.data)
+        .map(([field, errors]) => `${field}: ${errors.join(', ')}`)
+        .join('\n')
+      setError(messages)
+    } else {
       setError('Registration failed. Please try again.')
-    } finally {
-      setLoading(false)
     }
+  } finally {
+    setLoading(false)
   }
+}
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">

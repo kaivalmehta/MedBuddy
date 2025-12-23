@@ -51,5 +51,17 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+// 🔹 Auth APIs
+export const registerUser = (data) => {
+  return api.post('/auth/register/', data)
+}
+
+export const loginUser = (data) => {
+  return api.post('/auth/login/', data)
+}
+
+export const logoutUser = (refreshToken) => {
+  return api.post('/auth/logout/', { refresh: refreshToken })
+}
 
 export default api

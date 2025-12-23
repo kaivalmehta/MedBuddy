@@ -1,13 +1,14 @@
-// frontend/src/pages/auth/Login.jsx
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../context/AuthContext'
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { Link, useNavigate } from 'react-router-dom'
 
 export default function Login() {
   const { login } = useAuth()
+  const navigate = useNavigate() 
+
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,8 +18,12 @@ export default function Login() {
   const onSubmit = async (data) => {
     setLoading(true)
     setError('')
+
     try {
       await login(data.email, data.password)
+
+      navigate('/dashboard')
+
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid email or password')
     } finally {
@@ -33,8 +38,12 @@ export default function Login() {
       transition={{ duration: 0.4 }}
     >
       <div className="text-center mb-8">
-        <h2 className="text-3xl font-display font-bold text-secondary-800">Welcome back</h2>
-        <p className="mt-2 text-secondary-500">Sign in to continue to MedBuddy</p>
+        <h2 className="text-3xl font-display font-bold text-secondary-800">
+          Welcome back
+        </h2>
+        <p className="mt-2 text-secondary-500">
+          Sign in to continue to MedBuddy
+        </p>
       </div>
 
       {error && (
@@ -50,7 +59,9 @@ export default function Login() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium text-secondary-700 mb-2">Email</label>
+          <label className="block text-sm font-medium text-secondary-700 mb-2">
+            Email
+          </label>
           <div className="relative">
             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -63,11 +74,17 @@ export default function Login() {
               placeholder="you@example.com"
             />
           </div>
-          {errors.email && <p className="mt-1 text-sm text-danger-500">{errors.email.message}</p>}
+          {errors.email && (
+            <p className="mt-1 text-sm text-danger-500">
+              {errors.email.message}
+            </p>
+          )}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-secondary-700 mb-2">Password</label>
+          <label className="block text-sm font-medium text-secondary-700 mb-2">
+            Password
+          </label>
           <div className="relative">
             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -84,15 +101,27 @@ export default function Login() {
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
-          {errors.password && <p className="mt-1 text-sm text-danger-500">{errors.password.message}</p>}
+          {errors.password && (
+            <p className="mt-1 text-sm text-danger-500">
+              {errors.password.message}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500" />
-            <span className="text-sm text-secondary-600">Remember me</span>
+            <input
+              type="checkbox"
+              className="w-4 h-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+            />
+            <span className="text-sm text-secondary-600">
+              Remember me
+            </span>
           </label>
-          <Link to="/forgot-password" className="text-sm text-primary-600 hover:text-primary-700 font-medium">
+          <Link
+            to="/forgot-password"
+            className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+          >
             Forgot password?
           </Link>
         </div>
@@ -115,12 +144,13 @@ export default function Login() {
 
       <p className="mt-8 text-center text-secondary-500">
         Don't have an account?{' '}
-        <Link to="/register" className="text-primary-600 hover:text-primary-700 font-semibold">
+        <Link
+          to="/register"
+          className="text-primary-600 hover:text-primary-700 font-semibold"
+        >
           Create account
         </Link>
       </p>
     </motion.div>
   )
 }
-
-
