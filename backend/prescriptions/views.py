@@ -2,18 +2,25 @@
 from rest_framework import generics, views, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.permissions import IsAuthenticated
 from django.utils import timezone
-from .models import Prescription, PrescriptionDrug, MedicationReminder, DoseLog
-from .serializers import (PrescriptionListSerializer, PrescriptionDetailSerializer,
-                          PrescriptionUploadSerializer, MedicationReminderSerializer,
-                          DoseLogSerializer)
+from django.shortcuts import get_object_or_404
+from .models import Prescription, PrescriptionDrug, DrugInteraction, MedicationReminder, DoseLog
+from .serializers import (
+    PrescriptionListSerializer, PrescriptionDetailSerializer,
+    PrescriptionUploadSerializer, MedicationReminderSerializer,
+    CreateReminderSerializer, DoseLogSerializer
+)
 from .services import AzureServices
-from pharmacy.models import PharmacyOrder, Pharmacy
-from pharmacy.serializers import PharmacyOrderCreateSerializer
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PrescriptionListView(generics.ListAPIView):
+    """List all prescriptions for the authenticated user"""
     serializer_class = PrescriptionListSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         qs = Prescription.objects.filter(user=self.request.user)
@@ -24,7 +31,9 @@ class PrescriptionListView(generics.ListAPIView):
 
 
 class PrescriptionUploadView(views.APIView):
+    """Upload a new prescription image/PDF"""
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
     
     def post(self, request):
         serializer = PrescriptionUploadSerializer(data=request.data)
@@ -35,10 +44,12 @@ class PrescriptionUploadView(views.APIView):
         
         azure_svc = AzureServices()
         
-        # Upload to Azure Blob Storage (or local fallback)
-        blob_name, blob_url = azure_svc.upload_prescription(file, request.user.id)
+        try:
+            blob_name, blob_url = azure_svc.upload_prescription(file, str(request.user.id))
+        except Exception as e:
+            logger.error(f"Upload failed: {e}")
+            return Response({'error': 'Failed to upload file'}, status=500)
         
-        # Create prescription record
         prescription = Prescription.objects.create(
             user=request.user,
             family_member_id=family_member_id,
@@ -48,63 +59,61 @@ class PrescriptionUploadView(views.APIView):
             status='processing'
         )
         
-        # Try to run OCR immediately
+        # Try OCR during upload
         try:
             ocr_result = azure_svc.extract_text(blob_url)
             prescription.ocr_raw_text = ocr_result.get('text', '')
             prescription.ocr_confidence = ocr_result.get('confidence', 0)
-            prescription.status = 'uploaded' if prescription.ocr_raw_text else 'processing'
+            prescription.status = 'uploaded'
             prescription.save()
         except Exception as e:
-            print(f"OCR during upload failed: {e}")
+            logger.warning(f"OCR failed during upload: {e}")
             prescription.status = 'uploaded'
-            prescription.notes = f'OCR will run during analysis'
+            prescription.notes = 'OCR pending - will run during analysis'
             prescription.save()
         
-        return Response(
-            PrescriptionDetailSerializer(prescription).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response(PrescriptionDetailSerializer(prescription).data, status=201)
 
 
 class PrescriptionDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete a specific prescription"""
     serializer_class = PrescriptionDetailSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return Prescription.objects.filter(user=self.request.user)
 
 
 class PrescriptionAnalyzeView(views.APIView):
+    """Comprehensive prescription analysis with detailed safety report"""
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request, pk):
-        try:
-            prescription = Prescription.objects.get(pk=pk, user=request.user)
-        except Prescription.DoesNotExist:
-            return Response({'error': 'Prescription not found'}, status=404)
-        
+        prescription = get_object_or_404(Prescription, pk=pk, user=request.user)
         azure_svc = AzureServices()
         
-        # If no OCR text yet, try to get it now (use mock if Azure fails)
+        # Step 1: OCR if needed
         if not prescription.ocr_raw_text:
             try:
                 ocr_result = azure_svc.extract_text(prescription.image_url)
                 prescription.ocr_raw_text = ocr_result.get('text', '')
                 prescription.ocr_confidence = ocr_result.get('confidence', 0)
+                prescription.save()
             except Exception as e:
-                print(f"OCR failed: {e}")
-            
-            # If still no text, use mock OCR for demo
-            if not prescription.ocr_raw_text:
-                mock_result = azure_svc._mock_ocr_result()
-                prescription.ocr_raw_text = mock_result['text']
-                prescription.ocr_confidence = mock_result['confidence']
-                prescription.notes = 'Using demo OCR data (Azure Vision not configured or image not accessible)'
+                logger.error(f"OCR failed: {e}")
         
-        # Parse prescription with AI (or mock)
+        if not prescription.ocr_raw_text:
+            return Response(
+                {'error': 'Could not extract text from prescription image. Please try uploading a clearer image.'},
+                status=400
+            )
+        
+        # Step 2: Parse prescription
         try:
             parsed_data = azure_svc.parse_prescription(prescription.ocr_raw_text)
         except Exception as e:
-            print(f"Parsing failed: {e}")
-            parsed_data = azure_svc._mock_parsed_result()
+            logger.error(f"Parsing failed: {e}")
+            parsed_data = {"medications": []}
         
         prescription.parsed_data = parsed_data
         prescription.doctor_name = parsed_data.get('doctor_name', '')
@@ -113,14 +122,16 @@ class PrescriptionAnalyzeView(views.APIView):
         if parsed_data.get('prescription_date'):
             try:
                 from datetime import datetime
-                date_str = parsed_data['prescription_date']
-                prescription.prescription_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                prescription.prescription_date = datetime.strptime(
+                    parsed_data['prescription_date'], '%Y-%m-%d'
+                ).date()
             except:
                 pass
         
-        # Create drug records
+        # Step 3: Create drug records
         PrescriptionDrug.objects.filter(prescription=prescription).delete()
         drugs = []
+        
         for drug_data in parsed_data.get('medications', []):
             drug = PrescriptionDrug.objects.create(
                 prescription=prescription,
@@ -138,65 +149,163 @@ class PrescriptionAnalyzeView(views.APIView):
             )
             drugs.append(drug)
         
-        # Run safety analysis
+        # Step 4: Get health profile
         try:
-            health_profile = request.user.health_profile
+            hp = request.user.health_profile
             health_data = {
-                'conditions': health_profile.medical_conditions or [],
-                'allergies': health_profile.allergies or [],
-                'current_meds': health_profile.current_medications or [],
-                'lifestyle': health_profile.lifestyle_factors or {}
+                'conditions': hp.medical_conditions or [],
+                'allergies': hp.allergies or [],
+                'current_meds': hp.current_medications or [],
+                'lifestyle': hp.lifestyle_factors or {}
             }
         except:
             health_data = {'conditions': [], 'allergies': [], 'current_meds': [], 'lifestyle': {}}
         
-        try:
-            safety_result = azure_svc.analyze_safety(
-                drugs=[{
-                    'name': d.drug_name,
-                    'generic': d.generic_name,
-                    'dosage': d.dosage
-                } for d in drugs],
-                health_profile=health_data
-            )
-        except Exception as e:
-            print(f"Safety analysis failed: {e}")
-            safety_result = azure_svc._mock_safety_result(drugs)
+        # Step 5: Comprehensive safety analysis
+        if drugs:
+            try:
+                safety_result = azure_svc.analyze_safety_comprehensive(
+                    drugs=[{
+                        'name': d.drug_name,
+                        'generic': d.generic_name,
+                        'dosage': d.dosage,
+                        'frequency': d.frequency
+                    } for d in drugs],
+                    health_profile=health_data
+                )
+            except Exception as e:
+                logger.error(f"Safety analysis failed: {e}")
+                safety_result = azure_svc._empty_safety_report()
+            
+            # Save overall safety to prescription
+            prescription.overall_safety_percentage = safety_result.get('overall_safety_percentage')
+            prescription.safety_status = safety_result.get('safety_status', 'safe')
+            prescription.safety_summary = safety_result.get('safety_summary', '')
+            prescription.safety_report = safety_result
+            
+            # Step 6: Update individual drug safety
+            individual_safety = {
+                item['drug_name'].lower(): item 
+                for item in safety_result.get('individual_drug_safety', [])
+            }
+            
+            for drug in drugs:
+                drug_safety = individual_safety.get(drug.drug_name.lower(), {})
+                drug.safety_percentage = drug_safety.get('safety_percentage', 100)
+                drug.safety_status = drug_safety.get('safety_status', 'safe')
+                drug.is_safe_to_take = drug_safety.get('is_safe_to_take', True)
+                drug.requires_monitoring = drug_safety.get('requires_monitoring', False)
+                drug.safety_concerns = drug_safety.get('concerns', [])
+                drug.special_instructions = drug_safety.get('special_instructions', '')
+                drug.save()
+            
+            # Step 7: Create detailed interaction records
+            self._create_interaction_records(drugs, safety_result)
         
-        prescription.safety_score = safety_result.get('score', 7)
-        prescription.safety_summary = safety_result.get('summary', 'Analysis complete.')
         prescription.status = 'analyzed'
         prescription.save()
         
-        # Create interaction records
-        for drug in drugs:
-            for interaction in safety_result.get('interactions', []):
-                if interaction.get('drug_name', '').lower() in drug.drug_name.lower():
-                    drug.interactions.create(
-                        interaction_type=interaction.get('type', 'drug_drug'),
-                        severity=interaction.get('severity', 'minor'),
-                        interacting_item=interaction.get('interacting_with', ''),
-                        description=interaction.get('description', ''),
-                        recommendation=interaction.get('recommendation', '')
-                    )
-        
         return Response(PrescriptionDetailSerializer(prescription).data)
+    
+    def _create_interaction_records(self, drugs, safety_result):
+        """Create DrugInteraction records from safety analysis"""
+        drug_map = {d.drug_name.lower(): d for d in drugs}
+        
+        # Drug-Drug Interactions
+        for interaction in safety_result.get('drug_drug_interactions', []):
+            drug = drug_map.get(interaction.get('drug1', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_drug',
+                    severity=interaction.get('severity', 'moderate'),
+                    interacting_item=interaction.get('drug2', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    mechanism=interaction.get('mechanism', ''),
+                    effects=interaction.get('effects', ''),
+                    recommendation=interaction.get('recommendation', ''),
+                    requires_immediate_attention=interaction.get('requires_immediate_attention', False),
+                    consult_doctor=interaction.get('consult_doctor', False)
+                )
+        
+        # Drug-Allergy Interactions
+        for interaction in safety_result.get('drug_allergy_interactions', []):
+            drug = drug_map.get(interaction.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_allergy',
+                    severity=interaction.get('severity', 'severe'),
+                    interacting_item=interaction.get('allergy', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    effects=interaction.get('symptoms_to_watch', ''),
+                    recommendation=interaction.get('recommendation', ''),
+                    requires_immediate_attention=interaction.get('requires_immediate_attention', True),
+                    consult_doctor=interaction.get('consult_doctor', True)
+                )
+        
+        # Drug-Disease Interactions
+        for interaction in safety_result.get('drug_disease_interactions', []):
+            drug = drug_map.get(interaction.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_disease',
+                    severity=interaction.get('severity', 'moderate'),
+                    interacting_item=interaction.get('condition', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    effects=interaction.get('risk', ''),
+                    recommendation=interaction.get('recommendation', ''),
+                    consult_doctor=interaction.get('consult_doctor', False)
+                )
+        
+        # Drug-Food Interactions
+        for interaction in safety_result.get('drug_food_interactions', []):
+            drug = drug_map.get(interaction.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_food',
+                    severity=interaction.get('severity', 'minor'),
+                    interacting_item=interaction.get('food_or_drink', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    effects=interaction.get('timing', ''),
+                    recommendation=interaction.get('recommendation', '')
+                )
+        
+        # Pregnancy Warnings
+        for warning in safety_result.get('pregnancy_warnings', []):
+            drug = drug_map.get(warning.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='pregnancy',
+                    severity=warning.get('severity', 'moderate'),
+                    interacting_item=f"Pregnancy Category {warning.get('category', 'Unknown')}",
+                    title=f"Pregnancy Warning - Category {warning.get('category', '')}",
+                    description=warning.get('warning', ''),
+                    recommendation=warning.get('recommendation', '')
+                )
 
 
 class SendToPharmacyView(views.APIView):
+    """Send prescription to a pharmacy"""
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request, pk):
-        try:
-            prescription = Prescription.objects.get(pk=pk, user=request.user)
-        except Prescription.DoesNotExist:
-            return Response({'error': 'Prescription not found'}, status=404)
+        from pharmacy.models import Pharmacy, PharmacyOrder
+        from pharmacy.serializers import PharmacyOrderCreateSerializer
+        
+        prescription = get_object_or_404(Prescription, pk=pk, user=request.user)
         
         serializer = PharmacyOrderCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
-        try:
-            pharmacy = Pharmacy.objects.get(pk=serializer.validated_data['pharmacy_id'])
-        except Pharmacy.DoesNotExist:
-            return Response({'error': 'Pharmacy not found'}, status=404)
+        pharmacy = get_object_or_404(Pharmacy, pk=serializer.validated_data['pharmacy_id'])
         
         order = PharmacyOrder.objects.create(
             prescription=prescription,
@@ -212,11 +321,17 @@ class SendToPharmacyView(views.APIView):
         return Response({
             'message': 'Prescription sent to pharmacy',
             'order_id': str(order.id)
-        }, status=status.HTTP_201_CREATED)
+        }, status=201)
 
 
 class ReminderListView(generics.ListCreateAPIView):
-    serializer_class = MedicationReminderSerializer
+    """List and create medication reminders"""
+    permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return CreateReminderSerializer
+        return MedicationReminderSerializer
     
     def get_queryset(self):
         return MedicationReminder.objects.filter(
@@ -228,12 +343,21 @@ class ReminderListView(generics.ListCreateAPIView):
         serializer.save(user=self.request.user)
 
 
+class ReminderDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete a reminder"""
+    serializer_class = MedicationReminderSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return MedicationReminder.objects.filter(user=self.request.user)
+
+
 class MarkDoseTakenView(views.APIView):
+    """Mark a medication dose as taken"""
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request, pk):
-        try:
-            reminder = MedicationReminder.objects.get(pk=pk, user=request.user)
-        except MedicationReminder.DoesNotExist:
-            return Response({'error': 'Reminder not found'}, status=404)
+        reminder = get_object_or_404(MedicationReminder, pk=pk, user=request.user)
         
         DoseLog.objects.create(
             reminder=reminder,
@@ -247,14 +371,17 @@ class MarkDoseTakenView(views.APIView):
         reminder.last_taken_at = timezone.now()
         reminder.save()
         
-        return Response({'message': 'Dose marked as taken'})
+        return Response({'message': 'Dose marked as taken', 'doses_taken': reminder.doses_taken})
 
 
 class PrescriptionHistoryView(generics.ListAPIView):
+    """Get prescription history with optional filtering"""
     serializer_class = PrescriptionListSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         qs = Prescription.objects.filter(user=self.request.user)
+        
         start_date = self.request.query_params.get('start_date')
         end_date = self.request.query_params.get('end_date')
         
