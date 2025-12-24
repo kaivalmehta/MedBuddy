@@ -1,3 +1,8 @@
+
+# ============================================
+# backend/prescriptions/urls.py (REPLACE)
+# ============================================
+
 from django.urls import path
 from . import views
 
@@ -8,6 +13,7 @@ urlpatterns = [
     path('<uuid:pk>/analyze/', views.PrescriptionAnalyzeView.as_view(), name='prescription_analyze'),
     path('<uuid:pk>/send-to-pharmacy/', views.SendToPharmacyView.as_view(), name='send_to_pharmacy'),
     path('reminders/', views.ReminderListView.as_view(), name='reminder_list'),
+    path('reminders/<uuid:pk>/', views.ReminderDetailView.as_view(), name='reminder_detail'),
     path('reminders/<uuid:pk>/mark-taken/', views.MarkDoseTakenView.as_view(), name='mark_dose_taken'),
     path('history/', views.PrescriptionHistoryView.as_view(), name='prescription_history'),
 ]

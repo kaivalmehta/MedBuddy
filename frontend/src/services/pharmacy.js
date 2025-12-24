@@ -14,8 +14,8 @@ export const orderService = {
   get: (id) => api.get(`/pharmacy/orders/${id}/`),
   updateStatus: (id, data) => api.patch(`/pharmacy/orders/${id}/status/`, data),
   verify: (id, data) => api.post(`/pharmacy/orders/${id}/verify/`, data),
-  getChat: (orderId) => api.get(`/pharmacy/chat/${orderId}/`),
-  sendMessage: (orderId, message) => api.post(`/pharmacy/chat/${orderId}/`, { message }),
+  getChat: (orderId) => api.get(`/pharmacy/orders/${orderId}/chat/`),
+  sendMessage: (orderId, message) => api.post(`/pharmacy/orders/${orderId}/chat/`, { message }),
 }
 
 export const inventoryService = {

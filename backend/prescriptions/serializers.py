@@ -244,3 +244,92 @@ class DoseLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoseLog
         fields = ['id', 'reminder', 'scheduled_time', 'taken_at', 'status', 'notes']
+
+
+# ============================================
+# DETAILED SERIALIZERS FOR PATIENT HISTORY
+# ============================================
+
+class DrugComplianceSerializer(serializers.ModelSerializer):
+    """Drug with compliance/reminder data for patient history"""
+    compliance = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PrescriptionDrug
+        fields = [
+            'id', 'drug_name', 'generic_name', 'dosage', 'frequency',
+            'duration', 'quantity', 'instructions', 'category', 'primary_use',
+            'safety_percentage', 'safety_status', 'is_safe_to_take',
+            'compliance'
+        ]
+    
+    def get_compliance(self, obj):
+        """Get compliance data from reminders"""
+        # Get the patient (user) from context
+        user = self.context.get('patient')
+        if not user:
+            return None
+        
+        reminder = obj.reminders.filter(user=user).first()
+        if not reminder:
+            return None
+        
+        return {
+            'doses_taken': reminder.doses_taken,
+            'doses_missed': reminder.doses_missed,
+            'adherence_rate': reminder.adherence_rate,
+            'last_taken_at': reminder.last_taken_at,
+            'is_active': reminder.is_active,
+            'start_date': reminder.start_date,
+            'end_date': reminder.end_date
+        }
+
+
+class PrescriptionDetailedSerializer(serializers.ModelSerializer):
+    """Detailed prescription with medications for patient history"""
+    medications = serializers.SerializerMethodField()
+    drug_count = serializers.SerializerMethodField()
+    overall_compliance = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Prescription
+        fields = [
+            'id', 'doctor_name', 'clinic_name', 'prescription_date',
+            'overall_safety_percentage', 'safety_status', 'status', 'source',
+            'drug_count', 'overall_compliance', 'medications', 'created_at'
+        ]
+    
+    def get_drug_count(self, obj):
+        return obj.drugs.count()
+    
+    def get_medications(self, obj):
+        return DrugComplianceSerializer(
+            obj.drugs.all(), 
+            many=True, 
+            context=self.context
+        ).data
+    
+    def get_overall_compliance(self, obj):
+        """Calculate overall compliance across all medications"""
+        user = self.context.get('patient')
+        if not user:
+            return None
+        
+        total_taken = 0
+        total_missed = 0
+        
+        for drug in obj.drugs.all():
+            reminder = drug.reminders.filter(user=user).first()
+            if reminder:
+                total_taken += reminder.doses_taken
+                total_missed += reminder.doses_missed
+        
+        total = total_taken + total_missed
+        if total == 0:
+            return None
+        
+        return {
+            'doses_taken': total_taken,
+            'doses_missed': total_missed,
+            'adherence_rate': round((total_taken / total) * 100, 1)
+        }

@@ -1,0 +1,339 @@
+# backend/prescriptions/email_service.py
+# CREATE this new file
+
+from django.core.mail import send_mail, EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.conf import settings
+from django.utils import timezone
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class EmailService:
+    """Service for sending prescription and report emails to patients"""
+    
+    @staticmethod
+    def send_prescription_email(prescription, recipient_email, sender_name, sender_type):
+        """
+        Send prescription to patient via email.
+        
+        Args:
+            prescription: Prescription model instance
+            recipient_email: Patient's email
+            sender_name: Name of doctor/pharmacy sending
+            sender_type: 'doctor' or 'pharmacy'
+        """
+        subject = f"New Prescription from {sender_name} - MedBuddy"
+        
+        # Build medication list
+        medications = []
+        for drug in prescription.drugs.all():
+            medications.append({
+                'name': drug.drug_name,
+                'dosage': drug.dosage,
+                'frequency': drug.frequency,
+                'duration': drug.duration,
+                'instructions': drug.instructions
+            })
+        
+        # Plain text version
+        text_content = f"""
+Hello,
+
+You have received a new prescription from {sender_name}.
+
+Prescription Details:
+- Date: {prescription.prescription_date or 'Not specified'}
+- Doctor: {prescription.doctor_name or sender_name}
+- Clinic: {prescription.clinic_name or 'Not specified'}
+
+Medications:
+"""
+        for med in medications:
+            text_content += f"""
+- {med['name']} ({med['dosage']})
+  Take: {med['frequency']}
+  Duration: {med['duration']}
+  Instructions: {med['instructions']}
+"""
+        
+        text_content += f"""
+
+This prescription has been automatically added to your MedBuddy account.
+Log in to view full details, safety analysis, and set medication reminders.
+
+View Prescription: {settings.FRONTEND_URL}/prescriptions/{prescription.id}
+
+Best regards,
+MedBuddy Team
+
+---
+This is an automated message from MedBuddy. Do not reply to this email.
+        """
+        
+        # HTML version
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #00a8a8 0%, #007575 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
+        .prescription-card {{ background: white; padding: 20px; border-radius: 10px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+        .medication {{ border-left: 4px solid #00a8a8; padding-left: 15px; margin: 15px 0; }}
+        .btn {{ display: inline-block; background: #00a8a8; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }}
+        .footer {{ text-align: center; color: #666; font-size: 12px; margin-top: 30px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>💊 New Prescription</h1>
+            <p>From {sender_name}</p>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>You have received a new prescription that has been added to your MedBuddy account.</p>
+            
+            <div class="prescription-card">
+                <h3>📋 Prescription Details</h3>
+                <p><strong>Date:</strong> {prescription.prescription_date or 'Not specified'}</p>
+                <p><strong>Doctor:</strong> {prescription.doctor_name or sender_name}</p>
+                <p><strong>Clinic:</strong> {prescription.clinic_name or 'Not specified'}</p>
+            </div>
+            
+            <h3>💊 Medications</h3>
+"""
+        
+        for med in medications:
+            html_content += f"""
+            <div class="medication">
+                <strong>{med['name']}</strong> - {med['dosage']}<br>
+                <small>Take: {med['frequency']} | Duration: {med['duration']}</small><br>
+                <small>Instructions: {med['instructions'] or 'As directed'}</small>
+            </div>
+"""
+        
+        html_content += f"""
+            <center>
+                <a href="{settings.FRONTEND_URL}/prescriptions/{prescription.id}" class="btn">
+                    View Full Prescription
+                </a>
+            </center>
+            
+            <p>Log in to your MedBuddy account to:</p>
+            <ul>
+                <li>View detailed safety analysis</li>
+                <li>Check drug interactions</li>
+                <li>Set medication reminders</li>
+                <li>Send to a pharmacy</li>
+            </ul>
+        </div>
+        <div class="footer">
+            <p>This is an automated message from MedBuddy.</p>
+            <p>© 2024 MedBuddy - Your Intelligent Prescription Companion</p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[recipient_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send()
+            
+            # Update prescription
+            prescription.email_sent = True
+            prescription.email_sent_at = timezone.now()
+            prescription.save()
+            
+            logger.info(f"Prescription email sent to {recipient_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send prescription email: {e}")
+            return False
+    
+    @staticmethod
+    def send_lab_report_email(report, recipient_email, sender_name):
+        """Send lab report to patient via email."""
+        subject = f"New Lab Report from {sender_name} - MedBuddy"
+        
+        text_content = f"""
+Hello,
+
+You have received a new lab report from {sender_name}.
+
+Report Details:
+- Report Type: {report.get_report_type_display()}
+- Title: {report.report_title}
+- Date: {report.report_date or 'Not specified'}
+- Laboratory: {report.laboratory_name or sender_name}
+
+This report has been automatically added to your MedBuddy account.
+Log in to view full details and analysis.
+
+View Report: {settings.FRONTEND_URL}/reports/{report.id}
+
+Best regards,
+MedBuddy Team
+        """
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }}
+        .report-card {{ background: white; padding: 20px; border-radius: 10px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+        .btn {{ display: inline-block; background: #6366f1; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; margin: 20px 0; }}
+        .footer {{ text-align: center; color: #666; font-size: 12px; margin-top: 30px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 New Lab Report</h1>
+            <p>From {sender_name}</p>
+        </div>
+        <div class="content">
+            <p>Hello,</p>
+            <p>You have received a new lab report that has been added to your MedBuddy account.</p>
+            
+            <div class="report-card">
+                <h3>📋 Report Details</h3>
+                <p><strong>Type:</strong> {report.get_report_type_display()}</p>
+                <p><strong>Title:</strong> {report.report_title}</p>
+                <p><strong>Date:</strong> {report.report_date or 'Not specified'}</p>
+                <p><strong>Laboratory:</strong> {report.laboratory_name or sender_name}</p>
+            </div>
+            
+            <center>
+                <a href="{settings.FRONTEND_URL}/reports/{report.id}" class="btn">
+                    View Full Report
+                </a>
+            </center>
+        </div>
+        <div class="footer">
+            <p>This is an automated message from MedBuddy.</p>
+            <p>© 2024 MedBuddy - Your Intelligent Prescription Companion</p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[recipient_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send()
+            
+            report.email_sent = True
+            report.email_sent_at = timezone.now()
+            report.save()
+            
+            logger.info(f"Lab report email sent to {recipient_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send lab report email: {e}")
+            return False
+    
+    @staticmethod
+    def send_otp_email(patient_email, otp_code, requester_name, purpose='view_history'):
+        """Send OTP to patient for access verification."""
+        purpose_text = {
+            'view_history': 'view your medical history',
+            'add_prescription': 'add a prescription to your account',
+            'add_report': 'add a lab report to your account'
+        }
+        
+        subject = f"MedBuddy - Access Verification Code"
+        
+        text_content = f"""
+Hello,
+
+{requester_name} is requesting to {purpose_text.get(purpose, 'access your medical information')}.
+
+Your verification code is: {otp_code}
+
+This code will expire in 10 minutes.
+
+If you did not initiate this request, please ignore this email.
+
+Best regards,
+MedBuddy Team
+        """
+        
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+        .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+        .header {{ background: linear-gradient(135deg, #00a8a8 0%, #007575 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }}
+        .content {{ background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; text-align: center; }}
+        .otp-box {{ background: white; padding: 30px; border-radius: 10px; margin: 20px 0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }}
+        .otp-code {{ font-size: 36px; font-weight: bold; color: #00a8a8; letter-spacing: 8px; }}
+        .footer {{ text-align: center; color: #666; font-size: 12px; margin-top: 30px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔐 Verification Code</h1>
+        </div>
+        <div class="content">
+            <p><strong>{requester_name}</strong> is requesting to {purpose_text.get(purpose, 'access your medical information')}.</p>
+            
+            <div class="otp-box">
+                <p>Your verification code is:</p>
+                <p class="otp-code">{otp_code}</p>
+                <p><small>This code expires in 10 minutes</small></p>
+            </div>
+            
+            <p>Share this code with {requester_name} to grant access.</p>
+            <p><strong>If you did not initiate this request, please ignore this email.</strong></p>
+        </div>
+        <div class="footer">
+            <p>This is an automated message from MedBuddy.</p>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        try:
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[patient_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            email.send()
+            
+            logger.info(f"OTP email sent to {patient_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to send OTP email: {e}")
+            return False

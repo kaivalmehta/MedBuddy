@@ -12,8 +12,19 @@ export const userService = {
 }
 
 export const analyticsService = {
-  getPatientDashboard: () => api.get('/analytics/patient/dashboard/'),
-  getAdherenceReport: (days = 30) => api.get('/analytics/patient/adherence/', { params: { days } }),
-  getPharmacyDashboard: () => api.get('/analytics/pharmacy/dashboard/'),
-  exportHistory: () => api.get('/analytics/export/history/'),
+  // Patient dashboard - uses prescriptions endpoints
+  getPatientDashboard: () => api.get('/prescriptions/dashboard/'),
+  getAdherenceReport: (days = 30) => api.get('/prescriptions/adherence/', { params: { days } }),
+  
+  // Pharmacy dashboard - uses pharmacy endpoint
+  getPharmacyDashboard: () => api.get('/pharmacy/dashboard/'),
+  
+  // Doctor dashboard - uses doctor endpoint
+  getDoctorDashboard: () => api.get('/doctor/dashboard/'),
+  
+  // Laboratory dashboard - uses laboratory endpoint
+  getLabDashboard: () => api.get('/laboratory/dashboard/'),
+  
+  // Export history
+  exportHistory: () => api.get('/prescriptions/export/'),
 }

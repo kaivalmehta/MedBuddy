@@ -101,6 +101,100 @@ class AzureServices:
         except Exception as e:
             logger.error(f"OCR Error: {e}")
             return {'text': '', 'confidence': 0.0}
+
+    # ADD this method to your AzureServices class in prescriptions/services.py
+
+    def analyze_lab_report(self, ocr_text, report_type='other'):
+        """
+        Analyze lab report text and extract structured data.
+        """
+        if not ocr_text or not ocr_text.strip():
+            return {
+                'parsed_data': {},
+                'summary': 'Unable to analyze report.',
+                'abnormal_values': [],
+                'recommendations': []
+            }
+        
+        system_prompt = """You are a medical lab report analyzer. Analyze the lab report and extract structured information.
+
+Return a JSON object with this structure:
+{
+    "parsed_data": {
+        "patient_name": "if found",
+        "test_date": "YYYY-MM-DD if found",
+        "laboratory": "lab name if found",
+        "referring_doctor": "if found",
+        "tests": [
+            {
+                "test_name": "Test name",
+                "result": "Value with unit",
+                "reference_range": "Normal range",
+                "status": "normal|low|high|critical",
+                "interpretation": "What this result means"
+            }
+        ]
+    },
+    "summary": "Brief 2-3 sentence summary of the overall report findings in plain language",
+    "abnormal_values": [
+        {
+            "test_name": "Name of abnormal test",
+            "result": "Actual value",
+            "expected": "Normal range",
+            "severity": "mild|moderate|significant",
+            "meaning": "What this abnormality might indicate"
+        }
+    ],
+    "recommendations": [
+        "Recommendation 1 in plain language",
+        "Recommendation 2"
+    ],
+    "urgent_findings": ["Any findings requiring immediate attention"]
+}
+
+Guidelines:
+- Write in patient-friendly language
+- Highlight abnormal values clearly
+- Don't alarm unnecessarily but be clear about significant findings
+- Recommend follow-up if appropriate
+- If values look normal, say so reassuringly"""
+
+        user_prompt = f"""Analyze this {report_type} lab report and provide structured analysis:
+
+{ocr_text}
+
+Extract all test values, identify abnormal results, and provide patient-friendly explanations."""
+
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=self.deployment,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.1,
+                response_format={"type": "json_object"},
+                max_tokens=3000
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # Ensure required fields exist
+            result.setdefault('parsed_data', {})
+            result.setdefault('summary', 'Analysis complete.')
+            result.setdefault('abnormal_values', [])
+            result.setdefault('recommendations', [])
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Lab Report Analysis Error: {e}")
+            return {
+                'parsed_data': {},
+                'summary': 'Unable to analyze report. Please consult your doctor.',
+                'abnormal_values': [],
+                'recommendations': ['Please share this report with your healthcare provider.']
+            }
     
     def parse_prescription(self, ocr_text):
         """Parse raw OCR text into structured prescription data."""

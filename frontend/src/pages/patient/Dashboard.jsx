@@ -33,17 +33,39 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch dashboard data
+  // Fetch dashboard data (graceful failure)
+  const accessToken = localStorage.getItem('accessToken')
+  
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
     queryKey: ['patientDashboard'],
-    queryFn: () => analyticsService.getPatientDashboard().then(r => r.data)
+    queryFn: async () => {
+      try {
+        const r = await analyticsService.getPatientDashboard()
+        return r.data
+      } catch (err) {
+        console.warn('Dashboard endpoint not available:', err.message)
+        return {} // Return empty object on failure
+      }
+    },
+    retry: false,
+    enabled: !!user && !!accessToken // Only fetch if user and token exist
   })
 
-  // Fetch reminders for real-time status
+  // Fetch reminders for real-time status (graceful failure)
   const { data: remindersData, isLoading: remindersLoading } = useQuery({
     queryKey: ['reminders'],
-    queryFn: () => reminderService.list().then(r => r.data),
-    refetchInterval: 60000
+    queryFn: async () => {
+      try {
+        const r = await reminderService.list()
+        return r.data
+      } catch (err) {
+        console.warn('Reminders endpoint not available:', err.message)
+        return { results: [] } // Return empty results on failure
+      }
+    },
+    refetchInterval: 60000,
+    retry: false,
+    enabled: !!user && !!accessToken // Only fetch if user and token exist
   })
 
   // Process reminders with real-time status
