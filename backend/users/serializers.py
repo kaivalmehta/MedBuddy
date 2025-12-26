@@ -217,6 +217,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     user = UserPublicSerializer(read_only=True)
+    is_verified = serializers.SerializerMethodField()
     
     class Meta:
         model = DoctorProfile
@@ -226,19 +227,28 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'clinic_phone', 'is_verified', 'created_at'
         ]
         read_only_fields = ['id', 'is_verified', 'created_at']
+    
+    def get_is_verified(self, obj):
+        # Check both profile verification AND user's professional verification
+        return obj.is_verified and obj.user.is_professional_verified
 
 
 class LaboratoryProfileSerializer(serializers.ModelSerializer):
     user = UserPublicSerializer(read_only=True)
+    is_verified = serializers.SerializerMethodField()
     
     class Meta:
         model = LaboratoryProfile
         fields = [
             'id', 'user', 'name', 'license_number', 'address', 'city',
             'state', 'zip_code', 'phone', 'services', 'is_verified',
-            'operating_hours', 'created_at'
+            'home_collection_available', 'operating_hours', 'created_at'
         ]
         read_only_fields = ['id', 'is_verified', 'created_at']
+    
+    def get_is_verified(self, obj):
+        # Check both profile verification AND user's professional verification
+        return obj.is_verified and obj.user.is_professional_verified
 
 
 # ============================================

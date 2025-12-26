@@ -24,6 +24,8 @@ import FindPharmacy from './pages/patient/FindPharmacy'
 import MyOrders from './pages/patient/MyOrders'
 import LabReports from './pages/patient/LabReports'
 import LabReportDetail from './pages/patient/LabReportDetail'
+import PatientTestOrders from './pages/patient/PatientTestOrders'
+import PatientOrderTest from './pages/patient/PatientOrderTest'
 
 // Pharmacy Pages
 import PharmacyDashboard from './pages/pharmacy/PharmacyDashboard'
@@ -42,12 +44,22 @@ import DoctorUpload from './pages/doctor/DoctorUpload'
 import DoctorHistory from './pages/doctor/DoctorHistory'
 import DoctorProfile from './pages/doctor/DoctorProfile'
 import PatientHistory from './pages/doctor/PatientHistory'
+import DoctorOrderTest from './pages/doctor/DoctorOrderTest'
+import DoctorTestOrders from './pages/doctor/DoctorTestOrders'
 
 // Laboratory Pages
 import LabDashboard from './pages/laboratory/LabDashboard'
+import LabPatientAccess from './pages/laboratory/LabPatientAccess'
+import LabPatientHistory from './pages/laboratory/LabPatientHistory'
 import LabUploadReport from './pages/laboratory/LabUploadReport'
 import LabSentHistory from './pages/laboratory/LabSentHistory'
+import LabReportDetailPage from './pages/laboratory/LabReportDetail'
 import LabProfile from './pages/laboratory/LabProfile'
+import LabTestOrders from './pages/laboratory/LabTestOrders'
+import LabHomeCollections from './pages/laboratory/LabHomeCollections'
+
+// Shared Pages
+import CriticalAlerts from './pages/shared/CriticalAlerts'
 
 // Loading component
 const LoadingScreen = () => (
@@ -123,6 +135,9 @@ export default function App() {
         <Route path="/reminders" element={<Reminders />} />
         <Route path="/pharmacies" element={<FindPharmacy />} />
         <Route path="/orders" element={<MyOrders />} />
+        <Route path="/lab-orders" element={<PatientTestOrders />} />
+        <Route path="/order-test" element={<PatientOrderTest />} />
+        <Route path="/alerts" element={<CriticalAlerts userRole="patient" />} />
       </Route>
       
       {/* Pharmacy Routes */}
@@ -145,14 +160,22 @@ export default function App() {
         <Route path="/doctor/upload" element={<DoctorUpload />} />
         <Route path="/doctor/history" element={<DoctorHistory />} />
         <Route path="/doctor/profile" element={<DoctorProfile />} />
+        <Route path="/doctor/order-test" element={<DoctorOrderTest />} />
+        <Route path="/doctor/test-orders" element={<DoctorTestOrders />} />
+        <Route path="/doctor/alerts" element={<CriticalAlerts userRole="doctor" />} />
       </Route>
       
       {/* Laboratory Routes */}
       <Route element={<ProtectedRoute allowedRoles={['laboratory']}><MainLayout /></ProtectedRoute>}>
         <Route path="/laboratory" element={<LabDashboard />} />
+        <Route path="/laboratory/patient-access" element={<LabPatientAccess />} />
+        <Route path="/laboratory/patient/:patientId" element={<LabPatientHistory />} />
         <Route path="/laboratory/upload" element={<LabUploadReport />} />
         <Route path="/laboratory/sent" element={<LabSentHistory />} />
+        <Route path="/laboratory/report/:id" element={<LabReportDetailPage />} />
         <Route path="/laboratory/profile" element={<LabProfile />} />
+        <Route path="/laboratory/test-orders" element={<LabTestOrders />} />
+        <Route path="/laboratory/collections" element={<LabHomeCollections />} />
       </Route>
       
       {/* Root redirect */}

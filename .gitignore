@@ -1,4 +1,6 @@
-# Python
+####################################
+# Python / Django
+####################################
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,51 +22,84 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+####################################
+# Virtual Environments
+####################################
 venv/
 ENV/
 env/
 .venv/
 
-# Django
+####################################
+# Django specific
+####################################
 *.log
 local_settings.py
 db.sqlite3
+db.sqlite3-journal
 media/
 staticfiles/
 
-# Environment variables
+####################################
+# Environment Variables / Secrets
+####################################
 .env
 backend/.env
+frontend/.env
 .env.local
 .env.*.local
 *.env
+secrets.json
+*.pem
+*.key
 
-# IDE
+####################################
+# Logs
+####################################
+logs/
+backend/logs/
+backend/logs/*.log
+*.log
+*.out
+*.err
+
+####################################
+# IDE / OS files
+####################################
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 .DS_Store
+Thumbs.db
 
+####################################
 # Node.js
+####################################
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# React/Vite build
+####################################
+# Frontend (React / Vite)
+####################################
+frontend/node_modules/
 frontend/dist/
 frontend/build/
-*.local
+frontend/.vite/
+.vite/
 
-# Logs
-logs/
-*.log
-backend/logs/
-backend/logs/*.log
-# Coverage
+####################################
+# Lockfiles (keep package-lock.json if using npm)
+####################################
+pnpm-lock.yaml
+
+####################################
+# Coverage / Testing
+####################################
 htmlcov/
 .tox/
 .coverage
@@ -74,17 +109,17 @@ nosetests.xml
 coverage.xml
 *.cover
 
-# Secrets & Keys
-*.pem
-*.key
-secrets.json
-
-# Database
-*.sqlite3
-*.db
-
+####################################
 # Byte-compiled files
+####################################
 *.pyc
 
-# Azure
+####################################
+# Azure / Cloud
+####################################
 .azure/
+
+####################################
+# Git rewrite / filter-repo backups
+####################################
+.git/filter-repo/

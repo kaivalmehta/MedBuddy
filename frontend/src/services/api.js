@@ -9,67 +9,65 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken')
+    console.log('[API Request]', config.method?.toUpperCase(), config.url)
+    console.log('[API Request] Token from localStorage:', token ? token.substring(0, 50) + '...' : 'NULL')
+    
     if (token) {
-      config.headers = config.headers || {}
-      config.headers['Authorization'] = `Bearer ${token}`
+      // Make sure headers object exists
+      if (!config.headers) {
+        config.headers = {}
+      }
+      config.headers.Authorization = `Bearer ${token}`
+      console.log('[API Request] Authorization header set')
+    } else {
+      console.warn('[API Request] No token available!')
     }
     return config
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('[API Request Error]', error)
+    return Promise.reject(error)
+  }
 )
 
-// Response interceptor for token refresh
+// Response interceptor for token refresh - NO AUTO REDIRECT
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    console.log('[API Response]', response.status, response.config.url)
+    return response
+  },
   async (error) => {
     const originalRequest = error.config
+    console.error('[API Error]', error.response?.status, originalRequest?.url)
     
     // Skip token refresh logic for auth endpoints
     const authEndpoints = ['/auth/login', '/auth/register', '/auth/password', '/auth/token']
-    const isAuthEndpoint = authEndpoints.some(ep => originalRequest.url?.includes(ep))
-    
-    // Check if we're in the middle of a login transition (just logged in)
-    const justLoggedIn = sessionStorage.getItem('justLoggedIn')
+    const isAuthEndpoint = authEndpoints.some(ep => originalRequest?.url?.includes(ep))
     
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
-      // If we just logged in, don't try to refresh or redirect - just ignore these errors
-      if (justLoggedIn) {
-        console.log('[API] Ignoring 401 during login transition')
-        return Promise.reject(error)
-      }
-      
       originalRequest._retry = true
       
       const refreshToken = localStorage.getItem('refreshToken')
+      console.log('[API] Attempting refresh, token exists:', !!refreshToken)
       
       if (refreshToken) {
         try {
           const response = await axios.post(
             `${api.defaults.baseURL}/auth/token/refresh/`,
-            { refresh: refreshToken }
+            { refresh: refreshToken },
+            { headers: { 'Content-Type': 'application/json' } }
           )
           
           const { access } = response.data
+          console.log('[API] Refresh successful, new token:', access.substring(0, 50) + '...')
           localStorage.setItem('accessToken', access)
-          originalRequest.headers['Authorization'] = `Bearer ${access}`
+          originalRequest.headers.Authorization = `Bearer ${access}`
           
           return api(originalRequest)
         } catch (refreshError) {
-          // Only clear tokens and redirect if we're NOT in login transition
-          if (!justLoggedIn) {
-            localStorage.removeItem('accessToken')
-            localStorage.removeItem('refreshToken')
-            localStorage.removeItem('user')
-            
-            if (!window.location.pathname.includes('/login')) {
-              window.location.href = '/login'
-            }
-          }
+          console.error('[API] Refresh failed:', refreshError.response?.status, refreshError.response?.data)
           return Promise.reject(refreshError)
         }
-      } else if (!window.location.pathname.includes('/login')) {
-        // No refresh token and not on login page - redirect
-        window.location.href = '/login'
       }
     }
     

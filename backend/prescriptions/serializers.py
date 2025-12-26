@@ -333,3 +333,217 @@ class PrescriptionDetailedSerializer(serializers.ModelSerializer):
             'doses_missed': total_missed,
             'adherence_rate': round((total_taken / total) * 100, 1)
         }
+
+
+# ============================================
+# TEST CATALOG SERIALIZERS
+# ============================================
+
+from .models import TestCatalog, TestOrder, HomeSampleCollection, CriticalValueAlert
+
+
+class TestCatalogSerializer(serializers.ModelSerializer):
+    laboratory_name = serializers.SerializerMethodField()
+    effective_price = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TestCatalog
+        fields = [
+            'id', 'test_name', 'test_code', 'category', 'description',
+            'price', 'discount_price', 'effective_price', 'turnaround_time',
+            'preparation_instructions', 'sample_type',
+            'home_collection_available', 'home_collection_charge',
+            'normal_range_min', 'normal_range_max', 'unit',
+            'is_active', 'is_popular', 'laboratory_name'
+        ]
+    
+    def get_laboratory_name(self, obj):
+        try:
+            return obj.laboratory.laboratory_profile.name
+        except:
+            return obj.laboratory.email
+    
+    def get_effective_price(self, obj):
+        if obj.discount_price and obj.discount_price < obj.price:
+            return float(obj.discount_price)
+        return float(obj.price)
+
+
+class TestCatalogCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TestCatalog
+        fields = [
+            'test_name', 'test_code', 'category', 'description',
+            'price', 'discount_price', 'turnaround_time',
+            'preparation_instructions', 'sample_type',
+            'home_collection_available', 'home_collection_charge',
+            'normal_range_min', 'normal_range_max', 'unit',
+            'critical_low', 'critical_high', 'is_active', 'is_popular'
+        ]
+
+
+# ============================================
+# HOME SAMPLE COLLECTION SERIALIZERS
+# ============================================
+
+class HomeSampleCollectionSerializer(serializers.ModelSerializer):
+    time_slot_display = serializers.CharField(source='get_preferred_time_slot_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = HomeSampleCollection
+        fields = [
+            'id', 'address_line1', 'address_line2', 'city', 'state', 'zip_code',
+            'landmark', 'contact_phone', 'alternate_phone',
+            'preferred_date', 'preferred_time_slot', 'time_slot_display',
+            'confirmed_date', 'confirmed_time',
+            'collector_name', 'collector_phone',
+            'status', 'status_display', 'collected_at',
+            'patient_notes', 'lab_notes', 'collection_charge',
+            'created_at'
+        ]
+
+
+class HomeSampleCollectionCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HomeSampleCollection
+        fields = [
+            'address_line1', 'address_line2', 'city', 'state', 'zip_code',
+            'landmark', 'contact_phone', 'alternate_phone',
+            'preferred_date', 'preferred_time_slot', 'patient_notes'
+        ]
+
+
+# ============================================
+# TEST ORDER SERIALIZERS
+# ============================================
+
+class TestOrderSerializer(serializers.ModelSerializer):
+    doctor_name = serializers.SerializerMethodField()
+    patient_name = serializers.SerializerMethodField()
+    patient_email = serializers.SerializerMethodField()
+    laboratory_name = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    urgency_display = serializers.CharField(source='get_urgency_display', read_only=True)
+    collection_type_display = serializers.CharField(source='get_collection_type_display', read_only=True)
+    home_collection = HomeSampleCollectionSerializer(read_only=True)
+    has_report = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = TestOrder
+        fields = [
+            'id', 'order_number', 'doctor', 'doctor_name', 
+            'patient', 'patient_name', 'patient_email',
+            'laboratory', 'laboratory_name',
+            'tests_requested', 'clinical_notes', 'diagnosis',
+            'urgency', 'urgency_display', 'status', 'status_display',
+            'collection_type', 'collection_type_display',
+            'home_collection', 'lab_notes',
+            'accepted_at', 'declined_at', 'decline_reason',
+            'completed_at', 'estimated_cost', 'final_cost',
+            'has_report', 'created_at', 'updated_at'
+        ]
+    
+    def get_doctor_name(self, obj):
+        if not obj.doctor:
+            return None  # Patient self-order, no doctor
+        return f"Dr. {obj.doctor.get_full_name()}" if obj.doctor.get_full_name() else obj.doctor.email
+    
+    def get_patient_name(self, obj):
+        return obj.patient.get_full_name() or obj.patient.email
+    
+    def get_patient_email(self, obj):
+        return obj.patient.email
+    
+    def get_laboratory_name(self, obj):
+        try:
+            return obj.laboratory.laboratory_profile.name
+        except:
+            return obj.laboratory.email
+    
+    def get_has_report(self, obj):
+        return obj.reports.exists()
+
+
+class TestOrderCreateSerializer(serializers.Serializer):
+    patient_email = serializers.EmailField()
+    laboratory_id = serializers.UUIDField()
+    tests_requested = serializers.ListField(child=serializers.CharField())
+    clinical_notes = serializers.CharField(required=False, allow_blank=True)
+    diagnosis = serializers.CharField(required=False, allow_blank=True)
+    urgency = serializers.ChoiceField(choices=['routine', 'urgent', 'stat'], default='routine')
+    collection_type = serializers.ChoiceField(choices=['lab_visit', 'home_collection'], default='lab_visit')
+    
+    # Home collection fields (optional)
+    address_line1 = serializers.CharField(required=False)
+    address_line2 = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False)
+    state = serializers.CharField(required=False)
+    zip_code = serializers.CharField(required=False)
+    landmark = serializers.CharField(required=False, allow_blank=True)
+    contact_phone = serializers.CharField(required=False)
+    alternate_phone = serializers.CharField(required=False, allow_blank=True)
+    preferred_date = serializers.DateField(required=False)
+    preferred_time_slot = serializers.ChoiceField(
+        choices=['morning', 'afternoon', 'evening'], 
+        required=False
+    )
+    patient_notes = serializers.CharField(required=False, allow_blank=True)
+    
+    def validate(self, data):
+        if data.get('collection_type') == 'home_collection':
+            required_fields = ['address_line1', 'city', 'state', 'zip_code', 'contact_phone', 'preferred_date', 'preferred_time_slot']
+            for field in required_fields:
+                if not data.get(field):
+                    raise serializers.ValidationError({field: f'{field} is required for home collection'})
+        return data
+
+
+# ============================================
+# CRITICAL VALUE ALERT SERIALIZERS
+# ============================================
+
+class CriticalValueAlertSerializer(serializers.ModelSerializer):
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    severity_color = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = CriticalValueAlert
+        fields = [
+            'id', 'test_name', 'measured_value', 'unit', 'normal_range',
+            'severity', 'severity_display', 'severity_color',
+            'description', 'recommendation',
+            'patient_notified', 'patient_notified_at',
+            'doctor_notified', 'doctor_notified_at',
+            'acknowledged_by_patient', 'acknowledged_by_doctor',
+            'created_at'
+        ]
+    
+    def get_severity_color(self, obj):
+        colors = {
+            'abnormal': 'yellow',
+            'critical_low': 'orange',
+            'critical_high': 'orange',
+            'panic': 'red'
+        }
+        return colors.get(obj.severity, 'gray')
+
+
+# ============================================
+# LAB SEARCH SERIALIZER (for doctors)
+# ============================================
+
+class LaboratorySearchSerializer(serializers.Serializer):
+    """Serializer for laboratory search results"""
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    email = serializers.EmailField()
+    address = serializers.CharField()
+    city = serializers.CharField()
+    state = serializers.CharField()
+    phone = serializers.CharField()
+    services = serializers.ListField()
+    is_verified = serializers.BooleanField()
+    home_collection_available = serializers.BooleanField()
+    test_count = serializers.IntegerField()
+    rating = serializers.FloatField(required=False)

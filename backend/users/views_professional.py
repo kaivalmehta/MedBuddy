@@ -7,8 +7,8 @@ from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.db import transaction
-from datetime import date
+from django.db import transaction, models
+from datetime import date, timedelta
 
 from .models import (
     User, PatientAccessToken, DoctorProfile, LaboratoryProfile, HealthProfile
@@ -1139,21 +1139,398 @@ class LabDashboardView(views.APIView):
     
     def get(self, request):
         from django.db.models import Count
+        from django.db.models.functions import TruncDate
         
         reports = LabReport.objects.filter(sent_by=request.user)
         today = date.today()
+        week_ago = today - timedelta(days=7)
+        
+        # Get profile
+        try:
+            profile = LaboratoryProfile.objects.get(user=request.user)
+            lab_name = profile.name
+            is_verified = profile.is_verified
+        except LaboratoryProfile.DoesNotExist:
+            lab_name = request.user.email
+            is_verified = False
+        
+        # Unique patients served
+        unique_patients = reports.values('user').distinct().count()
+        
+        # Reports by type
+        report_types = list(
+            reports.values('report_type')
+            .annotate(count=Count('id'))
+            .order_by('-count')[:6]
+        )
+        
+        # Recent reports trend (last 7 days)
+        daily_reports = list(
+            reports.filter(created_at__date__gte=week_ago)
+            .annotate(day=TruncDate('created_at'))
+            .values('day')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+        
+        # Recent reports
+        recent_reports = reports.select_related('user')[:5]
+        recent_list = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'patient_email': r.user.email,
+            'patient_name': f"{r.user.first_name} {r.user.last_name}".strip() or r.user.email,
+            'created_at': r.created_at.isoformat(),
+            'status': r.status,
+        } for r in recent_reports]
         
         return Response({
+            'lab_name': lab_name,
             'total_reports_sent': reports.count(),
             'reports_today': reports.filter(created_at__date=today).count(),
+            'reports_this_week': reports.filter(created_at__date__gte=week_ago).count(),
             'reports_this_month': reports.filter(
                 created_at__month=today.month,
                 created_at__year=today.year
             ).count(),
-            'report_types': list(
-                reports.values('report_type')
-                .annotate(count=Count('id'))
-                .order_by('-count')[:5]
-            ),
-            'is_verified': request.user.is_professional_verified
+            'unique_patients': unique_patients,
+            'report_types': report_types,
+            'daily_reports': daily_reports,
+            'recent_reports': recent_list,
+            'is_verified': is_verified
+        })
+
+
+class LabCheckPatientView(views.APIView):
+    """Check if patient exists"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required'}, status=400)
+        
+        try:
+            patient = User.objects.get(email=email, role='patient')
+            
+            # Check for active session
+            active_session = PatientAccessToken.objects.filter(
+                patient=patient,
+                requester=request.user,
+                access_granted=True,
+                expires_at__gt=timezone.now()
+            ).first()
+            
+            return Response({
+                'exists': True,
+                'patient_id': str(patient.id),
+                'patient_name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'has_active_session': active_session is not None,
+                'session_expires_at': active_session.expires_at.isoformat() if active_session else None
+            })
+        except User.DoesNotExist:
+            return Response({
+                'exists': False,
+                'can_create': True
+            })
+
+
+class LabVerifyPatientOTPView(views.APIView):
+    """Verify OTP and grant access to patient data"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        otp_code = request.data.get('otp_code', '').strip()
+        
+        if not email or not otp_code:
+            return Response({'error': 'Email and OTP are required'}, status=400)
+        
+        try:
+            patient = User.objects.get(email=email, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Get the access token
+        access_token = PatientAccessToken.objects.filter(
+            patient=patient,
+            requester=request.user,
+            is_used=False
+        ).order_by('-created_at').first()
+        
+        if not access_token:
+            return Response({'error': 'No pending access request found'}, status=404)
+        
+        # Verify OTP
+        success, message = access_token.verify_otp(otp_code)
+        if not success:
+            return Response({'error': message}, status=400)
+        
+        return Response({
+            'message': 'Access granted',
+            'patient_id': str(patient.id),
+            'patient_email': patient.email,
+            'patient_name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+            'expires_at': access_token.expires_at.isoformat(),
+            'access_token': str(access_token.id)
+        })
+
+
+class LabActiveSessionsView(views.APIView):
+    """Get active patient access sessions for laboratory"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get(self, request):
+        sessions = PatientAccessToken.objects.filter(
+            requester=request.user,
+            access_granted=True,
+            expires_at__gt=timezone.now()
+        ).select_related('patient')
+        
+        return Response([{
+            'patient_id': str(s.patient.id),
+            'patient_email': s.patient.email,
+            'patient_name': f"{s.patient.first_name} {s.patient.last_name}".strip() or s.patient.email,
+            'expires_at': s.expires_at.isoformat(),
+            'granted_at': s.verified_at.isoformat() if s.verified_at else s.created_at.isoformat()
+        } for s in sessions])
+
+
+class LabPatientHistoryView(views.APIView):
+    """Get patient history with health profile and lab reports"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get(self, request, patient_id):
+        # Verify active session
+        try:
+            patient = User.objects.get(id=patient_id, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Check for active session
+        active_session = PatientAccessToken.objects.filter(
+            patient=patient,
+            requester=request.user,
+            access_granted=True,
+            expires_at__gt=timezone.now()
+        ).first()
+        
+        if not active_session:
+            return Response({'error': 'No active access session'}, status=403)
+        
+        # Get health profile
+        health_profile = None
+        try:
+            hp = HealthProfile.objects.get(user=patient)
+            health_profile = {
+                'blood_type': hp.blood_type,
+                'gender': hp.gender,
+                'date_of_birth': hp.date_of_birth.isoformat() if hp.date_of_birth else None,
+                'height_cm': hp.height_cm,
+                'weight_kg': hp.weight_kg,
+                'allergies': hp.allergies or [],
+                'medical_conditions': hp.medical_conditions or [],
+                'current_medications': hp.current_medications or [],
+                'emergency_contact_name': hp.emergency_contact_name,
+                'emergency_contact_phone': hp.emergency_contact_phone,
+            }
+        except HealthProfile.DoesNotExist:
+            pass
+        
+        # Get lab reports
+        reports = LabReport.objects.filter(user=patient).order_by('-created_at')[:30]
+        reports_data = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'report_date': r.report_date.isoformat() if r.report_date else None,
+            'laboratory_name': r.laboratory_name,
+            'referring_doctor': r.referring_doctor,
+            'file_url': r.file_url,
+            'status': r.status,
+            'source': r.source,
+            'analysis_summary': r.analysis_summary,
+            'abnormal_values': r.abnormal_values or [],
+            'recommendations': r.recommendations or [],
+            'created_at': r.created_at.isoformat(),
+            'sent_by_me': r.sent_by == request.user,
+        } for r in reports]
+        
+        # Get prescriptions (for context on why tests were ordered)
+        from prescriptions.models import Prescription
+        prescriptions = Prescription.objects.filter(
+            patient=patient
+        ).select_related('doctor').order_by('-created_at')[:10]
+        
+        prescriptions_data = [{
+            'id': str(p.id),
+            'doctor_name': p.doctor.get_full_name() or p.doctor.email if p.doctor else 'Unknown',
+            'clinic_name': p.clinic_name,
+            'diagnosis': p.diagnosis,
+            'created_at': p.created_at.isoformat(),
+        } for p in prescriptions]
+        
+        return Response({
+            'patient': {
+                'id': str(patient.id),
+                'email': patient.email,
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'phone': patient.phone,
+            },
+            'health_profile': health_profile,
+            'lab_reports': reports_data,
+            'recent_prescriptions': prescriptions_data,
+            'session_expires_at': active_session.expires_at.isoformat()
+        })
+
+
+class LabSentReportsView(views.APIView):
+    """Get all reports sent by this laboratory"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get(self, request):
+        # Get query params
+        report_type = request.query_params.get('type')
+        search = request.query_params.get('search', '').strip()
+        page = int(request.query_params.get('page', 1))
+        per_page = int(request.query_params.get('per_page', 20))
+        
+        reports = LabReport.objects.filter(sent_by=request.user).select_related('user')
+        
+        # Filters
+        if report_type:
+            reports = reports.filter(report_type=report_type)
+        if search:
+            reports = reports.filter(
+                models.Q(report_title__icontains=search) |
+                models.Q(user__email__icontains=search) |
+                models.Q(user__first_name__icontains=search) |
+                models.Q(user__last_name__icontains=search)
+            )
+        
+        # Count total
+        total = reports.count()
+        
+        # Paginate
+        start = (page - 1) * per_page
+        reports = reports.order_by('-created_at')[start:start + per_page]
+        
+        reports_data = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'report_date': r.report_date.isoformat() if r.report_date else None,
+            'patient_email': r.user.email,
+            'patient_name': f"{r.user.first_name} {r.user.last_name}".strip() or r.user.email,
+            'file_url': r.file_url,
+            'status': r.status,
+            'analysis_summary': r.analysis_summary[:200] if r.analysis_summary else '',
+            'abnormal_values_count': len(r.abnormal_values or []),
+            'created_at': r.created_at.isoformat(),
+            'email_sent': r.email_sent,
+        } for r in reports]
+        
+        return Response({
+            'reports': reports_data,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page
+        })
+
+
+class LabReportDetailView(views.APIView):
+    """Get detail of a specific report sent by this laboratory"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get(self, request, report_id):
+        from prescriptions.models import CriticalValueAlert
+        
+        try:
+            report = LabReport.objects.select_related('user').get(
+                id=report_id,
+                sent_by=request.user
+            )
+        except LabReport.DoesNotExist:
+            return Response({'error': 'Report not found'}, status=404)
+        
+        # Get associated critical value alerts for full abnormal values data
+        alerts = CriticalValueAlert.objects.filter(lab_report=report)
+        
+        # Build abnormal_values - prefer CriticalValueAlert records if they exist
+        if alerts.exists():
+            abnormal_values = [{
+                'test_name': a.test_name,
+                'severity': a.severity,
+                'result': a.measured_value,
+                'measured_value': a.measured_value,
+                'expected': a.normal_range,
+                'normal_range': a.normal_range,
+                'meaning': a.description,
+                'description': a.description,
+                'unit': a.unit,
+                'recommendation': a.recommendation,
+            } for a in alerts]
+            recommendations = list(set([a.recommendation for a in alerts if a.recommendation]))
+        elif report.abnormal_values:
+            # Fallback to report.abnormal_values for legacy data
+            if report.abnormal_values and len(report.abnormal_values) > 0 and isinstance(report.abnormal_values[0], dict):
+                abnormal_values = [{
+                    'test_name': av.get('test_name', 'Unknown'),
+                    'severity': av.get('severity', 'abnormal'),
+                    'result': av.get('result', av.get('measured_value', '')),
+                    'expected': av.get('expected', av.get('normal_range', '')),
+                    'meaning': av.get('meaning', av.get('description', '')),
+                    'unit': av.get('unit', ''),
+                    'recommendation': av.get('recommendation', ''),
+                } for av in report.abnormal_values]
+            else:
+                # List of just test names
+                abnormal_values = [{
+                    'test_name': name,
+                    'severity': 'abnormal',
+                    'result': '',
+                    'expected': '',
+                    'meaning': '',
+                    'unit': '',
+                    'recommendation': '',
+                } for name in report.abnormal_values if name]
+            recommendations = report.recommendations or []
+        else:
+            abnormal_values = []
+            recommendations = report.recommendations or []
+        
+        # Build analysis summary if not present
+        analysis_summary = report.analysis_summary
+        if not analysis_summary and abnormal_values:
+            if report.has_critical_values:
+                analysis_summary = f"This report contains {len(abnormal_values)} abnormal value(s) that require attention."
+            else:
+                analysis_summary = f"This report has been analyzed. {len(abnormal_values)} value(s) were flagged for review."
+        elif not analysis_summary:
+            analysis_summary = "No abnormal values were detected in this report."
+        
+        return Response({
+            'id': str(report.id),
+            'report_title': report.report_title,
+            'report_type': report.report_type,
+            'report_type_display': report.get_report_type_display() if hasattr(report, 'get_report_type_display') else report.report_type,
+            'report_date': report.report_date.isoformat() if report.report_date else None,
+            'patient_email': report.user.email,
+            'patient_name': f"{report.user.first_name} {report.user.last_name}".strip() or report.user.email,
+            'laboratory_name': report.laboratory_name,
+            'referring_doctor': report.referring_doctor,
+            'file_url': report.file_url,
+            'file_type': report.file_type,
+            'status': report.status,
+            'has_critical_values': report.has_critical_values,
+            'analysis_summary': analysis_summary,
+            'abnormal_values': abnormal_values,
+            'recommendations': recommendations,
+            'notes': report.notes,
+            'email_sent': report.email_sent,
+            'email_sent_at': report.email_sent_at.isoformat() if report.email_sent_at else None,
+            'created_at': report.created_at.isoformat(),
+            'updated_at': report.updated_at.isoformat(),
         })

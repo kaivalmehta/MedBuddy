@@ -18,6 +18,9 @@ const patientNav = [
   { path: '/upload', icon: Upload, label: 'Upload Prescription' },
   { path: '/prescriptions', icon: FileText, label: 'My Prescriptions' },
   { path: '/reports', icon: TestTube, label: 'Lab Reports' },
+  { path: '/order-test', icon: FlaskConical, label: 'Order Lab Test' },
+  { path: '/lab-orders', icon: ClipboardList, label: 'My Lab Orders' },
+  { path: '/alerts', icon: Bell, label: 'Health Alerts', highlight: true },
   { path: '/reminders', icon: Bell, label: 'Reminders' },
   { path: '/pharmacies', icon: MapPin, label: 'Find Pharmacy' },
   { path: '/orders', icon: ShoppingBag, label: 'My Orders' },
@@ -42,12 +45,18 @@ const doctorNav = [
   { path: '/doctor/create-prescription', icon: FilePlus, label: 'New Prescription' },
   { path: '/doctor/upload', icon: Upload, label: 'Upload & Send' },
   { divider: true },
+  { path: '/doctor/order-test', icon: FlaskConical, label: 'Order Lab Test' },
+  { path: '/doctor/test-orders', icon: ClipboardList, label: 'Test Orders' },
+  { path: '/doctor/alerts', icon: Bell, label: 'Critical Alerts', highlight: true },
+  { divider: true },
   { path: '/doctor/history', icon: History, label: 'Sent Prescriptions' },
   { path: '/doctor/profile', icon: Stethoscope, label: 'My Profile' },
 ]
 
 const laboratoryNav = [
   { path: '/laboratory', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/laboratory/test-orders', icon: ClipboardList, label: 'Test Orders' },
+  { path: '/laboratory/collections', icon: Package, label: 'Home Collections' },
   { path: '/laboratory/upload', icon: Upload, label: 'Upload Report' },
   { path: '/laboratory/sent', icon: Send, label: 'Sent Reports' },
   { divider: true },

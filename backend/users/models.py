@@ -336,8 +336,10 @@ class LaboratoryProfile(models.Model):
     
     # Services offered
     services = models.JSONField(default=list, blank=True)  # ['blood_test', 'xray', 'mri', etc.]
+    home_collection_available = models.BooleanField(default=False)  # Lab offers home collection
     
     is_verified = models.BooleanField(default=False)
+    verification_document = models.URLField(blank=True)  # License PDF URL
     operating_hours = models.JSONField(default=dict, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

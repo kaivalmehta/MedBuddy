@@ -1,499 +1,469 @@
-// frontend/src/pages/laboratory/LabUploadReport.jsx
-
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useDropzone } from 'react-dropzone'
-import { labRequestPatientAccess, labVerifyPatientOTP, uploadLabReport } from '../../services/professional'
-import { Upload, FileText, X, Send, Loader2, CheckCircle, Mail, TestTube, Shield, AlertCircle, ArrowRight } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
+import { laboratoryService, testOrderService } from '../../services/professional'
+import { 
+  Upload, Mail, ArrowLeft, Loader2, AlertCircle, CheckCircle, 
+  FileText, X, Calendar, User, FlaskConical, Send, Eye, Shield,
+  AlertTriangle, ClipboardList
+} from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-const REPORT_TYPES = [
-  { value: 'blood_test', label: 'Blood Test' },
-  { value: 'urine_test', label: 'Urine Test' },
-  { value: 'xray', label: 'X-Ray' },
-  { value: 'mri', label: 'MRI' },
-  { value: 'ct_scan', label: 'CT Scan' },
-  { value: 'ultrasound', label: 'Ultrasound' },
-  { value: 'ecg', label: 'ECG/EKG' },
-  { value: 'pathology', label: 'Pathology' },
-  { value: 'other', label: 'Other' },
-]
-
 export default function LabUploadReport() {
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
   
-  // Steps: 'upload' | 'otp' | 'success'
-  const [step, setStep] = useState('upload')
-  const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
-  const [patientEmail, setPatientEmail] = useState('')
-  const [reportType, setReportType] = useState('blood_test')
+  // Form state
+  const [email, setEmail] = useState(searchParams.get('patient') || '')
   const [reportTitle, setReportTitle] = useState('')
+  const [reportType, setReportType] = useState('blood_test')
+  const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0])
   const [referringDoctor, setReferringDoctor] = useState('')
   const [notes, setNotes] = useState('')
   const [sendEmail, setSendEmail] = useState(true)
+  const [file, setFile] = useState(null)
+  const [testOrderId, setTestOrderId] = useState(searchParams.get('order') || '')
+  
+  // UI state
+  const [step, setStep] = useState('form')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [hasActiveSession, setHasActiveSession] = useState(false)
-  const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
-  const [resendTimer, setResendTimer] = useState(0)
-  const [resultData, setResultData] = useState(null)
-  
-  const otpRefs = useRef([])
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadResult, setUploadResult] = useState(null)
+  const [patientExists, setPatientExists] = useState(false)
+  const [verifyingPatient, setVerifyingPatient] = useState(false)
+  const [labProfile, setLabProfile] = useState(null)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [testOrder, setTestOrder] = useState(null)
 
-  // Resend timer countdown
+  const reportTypes = [
+    { value: 'blood_test', label: 'Blood Test' },
+    { value: 'urine_test', label: 'Urine Test' },
+    { value: 'xray', label: 'X-Ray' },
+    { value: 'mri', label: 'MRI' },
+    { value: 'ct_scan', label: 'CT Scan' },
+    { value: 'ultrasound', label: 'Ultrasound' },
+    { value: 'ecg', label: 'ECG/EKG' },
+    { value: 'pathology', label: 'Pathology' },
+    { value: 'other', label: 'Other' },
+  ]
+
   useEffect(() => {
-    if (resendTimer > 0) {
-      const timer = setTimeout(() => setResendTimer(resendTimer - 1), 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [resendTimer])
-
-  // Focus first OTP input when step changes
-  useEffect(() => {
-    if (step === 'otp' && otpRefs.current[0]) {
-      otpRefs.current[0].focus()
-    }
-  }, [step])
-
-  const onDrop = useCallback((acceptedFiles) => {
-    const selectedFile = acceptedFiles[0]
-    if (selectedFile) {
-      setFile(selectedFile)
-      if (selectedFile.type.startsWith('image/')) {
-        setPreview(URL.createObjectURL(selectedFile))
-      } else {
-        setPreview(null)
-      }
+    loadProfile()
+    if (testOrderId) {
+      loadTestOrder()
     }
   }, [])
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'image/*': ['.jpg', '.jpeg', '.png'], 'application/pdf': ['.pdf'] },
-    maxSize: 10 * 1024 * 1024,
-    multiple: false
-  })
-
-  // Initiate upload (sends OTP if no active session)
-  const handleInitiateUpload = async () => {
-    if (!file || !patientEmail || !reportTitle) return
-
-    setLoading(true)
-    setError('')
-
+  const loadProfile = async () => {
     try {
-      // Request patient access (sends OTP)
-      const res = await labRequestPatientAccess({
-        patient_email: patientEmail,
-        create_if_not_exists: true
-      })
+      const res = await laboratoryService.getProfile()
+      setLabProfile(res.data)
+    } catch (err) {
+      console.error('Failed to load profile:', err)
+    } finally {
+      setLoadingProfile(false)
+    }
+  }
 
-      if (res.data.has_active_session) {
-        // Can upload directly
-        await handleUpload()
+  const loadTestOrder = async () => {
+    try {
+      const res = await testOrderService.getLabOrderDetail(testOrderId)
+      setTestOrder(res.data)
+      if (res.data.patient_email) setEmail(res.data.patient_email)
+      if (res.data.doctor_name) setReferringDoctor(res.data.doctor_name)
+      if (res.data.tests_requested?.length) {
+        setReportTitle(res.data.tests_requested.join(', '))
+      }
+      setPatientExists(true)
+    } catch (err) {
+      console.error('Failed to load test order:', err)
+    }
+  }
+
+  // Just check if patient exists - NO OTP REQUIRED
+  useEffect(() => {
+    if (email && email.includes('@')) {
+      checkPatientExists()
+    } else {
+      setPatientExists(false)
+    }
+  }, [email])
+
+  const checkPatientExists = async () => {
+    setVerifyingPatient(true)
+    setError('')
+    try {
+      const res = await laboratoryService.checkPatient(email.trim().toLowerCase())
+      if (res.data.exists) {
+        setPatientExists(true)
       } else {
-        // Need OTP verification
-        setStep('otp')
-        setResendTimer(60)
+        setPatientExists(false)
+        setError('Patient not found in the system.')
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to initiate upload')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Handle OTP input
-  const handleOtpChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return
-
-    const newOtp = [...otpValues]
-    newOtp[index] = value.slice(-1)
-    setOtpValues(newOtp)
-
-    if (value && index < 5) {
-      otpRefs.current[index + 1]?.focus()
-    }
-
-    if (newOtp.every(v => v) && newOtp.join('').length === 6) {
-      handleVerifyAndUpload(newOtp.join(''))
-    }
-  }
-
-  const handleOtpKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !otpValues[index] && index > 0) {
-      otpRefs.current[index - 1]?.focus()
-    }
-  }
-
-  const handleOtpPaste = (e) => {
-    e.preventDefault()
-    const pastedData = e.clipboardData.getData('text').slice(0, 6)
-    if (/^\d+$/.test(pastedData)) {
-      const newOtp = pastedData.split('').concat(Array(6 - pastedData.length).fill(''))
-      setOtpValues(newOtp)
-      if (pastedData.length === 6) {
-        handleVerifyAndUpload(pastedData)
+      setPatientExists(false)
+      if (err.response?.status === 404) {
+        setError('Patient not found in the system.')
       }
+    } finally {
+      setVerifyingPatient(false)
     }
   }
 
-  // Upload report without OTP (active session)
-  const handleUpload = async () => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('patient_email', patientEmail)
-    formData.append('report_type', reportType)
-    formData.append('report_title', reportTitle)
-    formData.append('referring_doctor', referringDoctor)
-    formData.append('notes', notes)
-    formData.append('send_email', sendEmail)
-
-    const res = await uploadLabReport(formData)
-    setResultData(res.data)
-    setStep('success')
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0]
+    if (selectedFile) {
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+      if (!validTypes.includes(selectedFile.type)) {
+        setError('Please upload a PDF or image file (JPG, PNG)')
+        return
+      }
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        setError('File size must be less than 10MB')
+        return
+      }
+      setFile(selectedFile)
+      setError('')
+    }
   }
 
-  // Verify OTP and upload report
-  const handleVerifyAndUpload = async (otpCode) => {
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    
+    if (!patientExists) {
+      setError('Please enter a valid patient email')
+      return
+    }
+    if (!file) {
+      setError('Please select a file to upload')
+      return
+    }
+    if (!reportTitle.trim()) {
+      setError('Please enter a report title')
+      return
+    }
+
+    setStep('uploading')
     setLoading(true)
     setError('')
+    setUploadProgress(0)
 
     try {
-      // First verify OTP
-      await labVerifyPatientOTP({
-        patient_email: patientEmail,
-        otp_code: otpCode
-      })
-
-      // Then upload report
       const formData = new FormData()
-      formData.append('file', file)
-      formData.append('patient_email', patientEmail)
+      formData.append('patient_email', email.trim().toLowerCase())
+      formData.append('report_file', file)
+      formData.append('report_title', reportTitle.trim())
       formData.append('report_type', reportType)
-      formData.append('report_title', reportTitle)
-      formData.append('referring_doctor', referringDoctor)
-      formData.append('notes', notes)
+      formData.append('report_date', reportDate)
+      formData.append('referring_doctor', referringDoctor.trim())
+      formData.append('notes', notes.trim())
       formData.append('send_email', sendEmail)
+      if (testOrderId) {
+        formData.append('test_order_id', testOrderId)
+      }
 
-      const res = await uploadLabReport(formData)
-      setResultData(res.data)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90))
+      }, 200)
+
+      const res = await testOrderService.uploadReport(formData)
+      
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+      setUploadResult(res.data)
       setStep('success')
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid verification code')
-      setOtpValues(['', '', '', '', '', ''])
-      otpRefs.current[0]?.focus()
+      console.error('Upload error:', err)
+      setError(err.response?.data?.error || 'Failed to upload report')
+      setStep('error')
     } finally {
       setLoading(false)
     }
   }
 
-  // Resend OTP
-  const handleResendOTP = async () => {
-    if (resendTimer > 0) return
-
-    setLoading(true)
-    setError('')
-
-    try {
-      await labRequestPatientAccess({
-        patient_email: patientEmail,
-        create_if_not_exists: true
-      })
-      setResendTimer(60)
-      setOtpValues(['', '', '', '', '', ''])
-    } catch (err) {
-      setError('Failed to resend code')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // Reset form
-  const resetForm = () => {
-    setStep('upload')
+  const handleReset = () => {
+    setStep('form')
     setFile(null)
-    setPreview(null)
-    setPatientEmail('')
-    setReportType('blood_test')
     setReportTitle('')
-    setReferringDoctor('')
     setNotes('')
-    setHasActiveSession(false)
-    setOtpValues(['', '', '', '', '', ''])
     setError('')
-    setResultData(null)
+    setUploadResult(null)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  if (loadingProfile) {
+    return (
+      <div className="max-w-2xl mx-auto card p-8">
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+        </div>
+      </div>
+    )
+  }
+
+  if (labProfile && !labProfile.is_verified) {
+    return (
+      <div className="max-w-2xl mx-auto card p-8 text-center py-8">
+        <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Shield className="w-10 h-10 text-amber-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">Verification Required</h2>
+        <p className="text-gray-600 mb-6">Your laboratory account needs to be verified before uploading reports.</p>
+        <div className="flex gap-3 justify-center">
+          <Link to="/laboratory/profile" className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+            Go to Profile
+          </Link>
+          <Link to="/laboratory" className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+            Back to Dashboard
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-          <TestTube className="w-6 h-6 text-purple-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-display font-bold text-secondary-800">Upload Lab Report</h1>
-          <p className="text-secondary-500">Upload and send report to patient</p>
-        </div>
-      </div>
+    <div className="max-w-2xl mx-auto">
+      <div className="card p-8">
+        <AnimatePresence mode="wait">
+          {step === 'form' && (
+            <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <div className="flex items-center justify-between mb-6">
+                <Link to="/laboratory" className="flex items-center gap-2 text-gray-600 hover:text-gray-800">
+                  <ArrowLeft className="w-5 h-5" /> Back
+                </Link>
+              </div>
 
-      <AnimatePresence mode="wait">
-        {/* Step 1: Upload Form */}
-        {step === 'upload' && (
-          <motion.div
-            key="upload"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-          >
-            <div className="space-y-6">
-              {error && (
-                <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  {error}
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Upload className="w-8 h-8 text-purple-600" />
+                </div>
+                <h2 className="text-2xl font-bold text-gray-800">Upload Lab Report</h2>
+                <p className="mt-2 text-gray-600">Send a report directly to a patient</p>
+              </div>
+
+              {testOrder && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                  <div className="flex items-center gap-2 text-blue-800 font-medium mb-2">
+                    <ClipboardList className="w-5 h-5" />
+                    Linked to Order #{testOrder.order_number}
+                  </div>
+                  <p className="text-sm text-blue-600">Patient: {testOrder.patient_name} • Doctor: {testOrder.doctor_name}</p>
                 </div>
               )}
 
-              {/* File Upload */}
-              <div className="card">
-                <h2 className="text-lg font-semibold text-secondary-800 mb-4">Report File</h2>
-                {!file ? (
-                  <div {...getRootProps()} className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${isDragActive ? 'border-purple-500 bg-purple-50' : 'border-gray-300 hover:border-purple-400'}`}>
-                    <input {...getInputProps()} />
-                    <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-secondary-600 font-medium">Drag & drop report here</p>
-                    <p className="text-secondary-400 text-sm mt-1">JPG, PNG, or PDF up to 10MB</p>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-                    {preview ? (
-                      <img src={preview} alt="Preview" className="w-24 h-24 object-cover rounded-lg" />
-                    ) : (
-                      <div className="w-24 h-24 bg-purple-100 rounded-lg flex items-center justify-center">
-                        <FileText className="w-8 h-8 text-purple-500" />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-secondary-800">{file.name}</p>
-                      <p className="text-sm text-secondary-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                    <button type="button" onClick={() => { setFile(null); setPreview(null); }} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-                      <X className="w-5 h-5" />
-                    </button>
-                  </div>
-                )}
-              </div>
+              {error && (
+                <div className="mb-4 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="text-sm">{error}</span>
+                </div>
+              )}
 
-              {/* Report Details */}
-              <div className="card">
-                <h2 className="text-lg font-semibold text-secondary-800 mb-4">Report Details</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Patient Email *</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className={`w-full pl-10 pr-12 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500 ${
+                        patientExists ? 'border-green-300 bg-green-50' : 'border-gray-300'
+                      }`}
+                      placeholder="patient@example.com"
+                      required
+                      disabled={!!testOrder}
+                    />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      {verifyingPatient ? (
+                        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
+                      ) : patientExists ? (
+                        <CheckCircle className="w-5 h-5 text-green-500" />
+                      ) : null}
+                    </div>
+                  </div>
+                  {patientExists && (
+                    <p className="mt-1 text-sm text-green-600 flex items-center gap-1">
+                      <CheckCircle className="w-4 h-4" /> Patient found - Ready to send
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Report Title *</label>
+                  <div className="relative">
+                    <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={reportTitle}
+                      onChange={(e) => setReportTitle(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
+                      placeholder="Complete Blood Count (CBC)"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-secondary-700 mb-2">Report Type *</label>
-                    <select value={reportType} onChange={(e) => setReportType(e.target.value)} className="input-field">
-                      {REPORT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
+                    <select
+                      value={reportType}
+                      onChange={(e) => setReportType(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
+                    >
+                      {reportTypes.map(type => (
+                        <option key={type.value} value={type.value}>{type.label}</option>
+                      ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-secondary-700 mb-2">Report Title *</label>
-                    <input 
-                      type="text" 
-                      value={reportTitle} 
-                      onChange={(e) => setReportTitle(e.target.value)} 
-                      className="input-field" 
-                      placeholder="e.g., Complete Blood Count" 
-                      required 
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-secondary-700 mb-2">Referring Doctor (Optional)</label>
-                    <input 
-                      type="text" 
-                      value={referringDoctor} 
-                      onChange={(e) => setReferringDoctor(e.target.value)} 
-                      className="input-field" 
-                      placeholder="Dr. Name" 
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-secondary-700 mb-2">Notes (Optional)</label>
-                    <textarea 
-                      value={notes} 
-                      onChange={(e) => setNotes(e.target.value)} 
-                      className="input-field min-h-[80px]" 
-                      placeholder="Any additional notes..." 
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Report Date</label>
+                    <input
+                      type="date"
+                      value={reportDate}
+                      onChange={(e) => setReportDate(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
                     />
                   </div>
                 </div>
-              </div>
 
-              {/* Patient Email */}
-              <div className="card">
-                <h2 className="text-lg font-semibold text-secondary-800 mb-4">Send To</h2>
-                <input 
-                  type="email" 
-                  value={patientEmail} 
-                  onChange={(e) => setPatientEmail(e.target.value)} 
-                  className="input-field" 
-                  placeholder="Patient's email address *" 
-                  required 
-                />
-                <p className="text-xs text-secondary-500 mt-2">
-                  Patient will receive an OTP to verify and consent to receiving this report
-                </p>
-                <label className="flex items-center gap-3 mt-4 cursor-pointer">
-                  <input 
-                    type="checkbox" 
-                    checked={sendEmail} 
-                    onChange={(e) => setSendEmail(e.target.checked)} 
-                    className="w-5 h-5 rounded border-gray-300 text-purple-500" 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Referring Doctor (Optional)</label>
+                  <input
+                    type="text"
+                    value={referringDoctor}
+                    onChange={(e) => setReferringDoctor(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
+                    placeholder="Dr. Smith"
                   />
-                  <span className="text-secondary-700">Send email notification to patient</span>
-                  <Mail className="w-4 h-4 text-secondary-400" />
-                </label>
-              </div>
+                </div>
 
-              <button 
-                onClick={handleInitiateUpload}
-                disabled={loading || !file || !patientEmail || !reportTitle} 
-                className="w-full flex items-center justify-center gap-2 py-4 rounded-xl text-white font-medium transition-all disabled:opacity-50"
-                style={{background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'}}
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                {loading ? 'Processing...' : 'Send OTP & Upload'}
-              </button>
-            </div>
-          </motion.div>
-        )}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Report File *</label>
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
+                      file ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
+                    }`}
+                  >
+                    <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" />
+                    {file ? (
+                      <div className="flex items-center justify-center gap-3">
+                        <FileText className="w-8 h-8 text-purple-600" />
+                        <div className="text-left">
+                          <p className="font-medium text-gray-800">{file.name}</p>
+                          <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                        </div>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null); }} className="p-1 hover:bg-purple-200 rounded-full">
+                          <X className="w-5 h-5 text-purple-600" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-600">Click to upload</p>
+                        <p className="text-sm text-gray-400">PDF, JPG, PNG (max 10MB)</p>
+                      </>
+                    )}
+                  </div>
+                </div>
 
-        {/* Step 2: OTP Verification */}
-        {step === 'otp' && (
-          <motion.div
-            key="otp"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="card"
-          >
-            <div className="text-center mb-6">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Shield className="w-8 h-8 text-purple-600" />
-              </div>
-              <h2 className="text-xl font-semibold text-secondary-800">Patient Verification Required</h2>
-              <p className="text-secondary-500 mt-2">
-                OTP sent to <strong>{patientEmail}</strong><br />
-                Ask the patient to share the 6-digit code
-              </p>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Notes (Optional)</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={3}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 resize-none"
+                    placeholder="Additional notes..."
+                  />
+                </div>
 
-            {error && (
-              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                {error}
-              </div>
-            )}
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-5 h-5 text-gray-500" />
+                    <div>
+                      <p className="font-medium text-gray-800">Email Notification</p>
+                      <p className="text-sm text-gray-500">Notify patient when ready</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} className="sr-only peer" />
+                    <div className="w-11 h-6 bg-gray-300 peer-checked:bg-purple-600 rounded-full peer after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                  </label>
+                </div>
 
-            <div className="flex justify-center gap-3 mb-6">
-              {otpValues.map((value, index) => (
-                <input
-                  key={index}
-                  ref={(el) => (otpRefs.current[index] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={value}
-                  onChange={(e) => handleOtpChange(index, e.target.value)}
-                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                  onPaste={handleOtpPaste}
-                  className="w-12 h-14 text-center text-xl font-semibold border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all"
-                  disabled={loading}
-                />
-              ))}
-            </div>
-
-            <div className="flex gap-3 mb-4">
-              <button 
-                type="button" 
-                onClick={() => {
-                  setStep('upload')
-                  setOtpValues(['', '', '', '', '', ''])
-                  setError('')
-                }} 
-                className="btn-secondary flex-1"
-              >
-                Back
-              </button>
-              <button 
-                onClick={() => handleVerifyAndUpload(otpValues.join(''))}
-                disabled={loading || otpValues.some(v => !v)} 
-                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-white font-medium transition-all disabled:opacity-50"
-                style={{background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'}}
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                {loading ? 'Uploading...' : 'Verify & Send'}
-              </button>
-            </div>
-
-            <p className="text-center text-secondary-500">
-              Didn't receive the code?{' '}
-              {resendTimer > 0 ? (
-                <span className="text-secondary-400">Resend in {resendTimer}s</span>
-              ) : (
-                <button onClick={handleResendOTP} disabled={loading} className="text-purple-600 hover:text-purple-700 font-medium">
-                  Resend code
+                <button
+                  type="submit"
+                  disabled={!patientExists || !file || !reportTitle.trim()}
+                  className="w-full py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
+                >
+                  <Send className="w-5 h-5" /> Upload & Send Report
                 </button>
-              )}
-            </p>
-          </motion.div>
-        )}
+              </form>
+            </motion.div>
+          )}
 
-        {/* Step 3: Success */}
-        {step === 'success' && (
-          <motion.div
-            key="success"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="card text-center py-12"
-          >
-            <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-emerald-600" />
-            </div>
-            <h2 className="text-2xl font-display font-bold text-secondary-800 mb-2">Report Sent!</h2>
-            <p className="text-secondary-500 mb-6">
-              The lab report has been uploaded and sent to {patientEmail}
-            </p>
-            
-            {resultData && (
-              <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left max-w-sm mx-auto">
-                <div className="space-y-2 text-sm">
-                  <p className="text-secondary-700">
-                    <strong>Report:</strong> {reportTitle}
-                  </p>
-                  <p className="text-secondary-700">
-                    <strong>Type:</strong> {REPORT_TYPES.find(t => t.value === reportType)?.label}
-                  </p>
-                  {resultData.email_sent && (
-                    <div className="flex items-center gap-2 text-emerald-600 mt-2">
-                      <Mail className="w-4 h-4" />
-                      <span>Email notification sent</span>
+          {step === 'uploading' && (
+            <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
+              <Loader2 className="w-16 h-16 text-purple-600 animate-spin mx-auto mb-6" />
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Uploading Report...</h2>
+              <p className="text-gray-600 mb-6">Analyzing for critical values</p>
+              <div className="max-w-xs mx-auto h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-full bg-purple-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+              </div>
+            </motion.div>
+          )}
+
+          {step === 'success' && (
+            <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-12">
+              <div className={`w-20 h-20 ${uploadResult?.has_critical_values ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                {uploadResult?.has_critical_values ? <AlertTriangle className="w-10 h-10 text-orange-600" /> : <CheckCircle className="w-10 h-10 text-green-600" />}
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                {uploadResult?.has_critical_values ? 'Report Sent with Critical Values!' : 'Report Sent!'}
+              </h2>
+              <p className="text-gray-600 mb-6">The report has been sent to the patient.</p>
+
+              {uploadResult?.has_critical_values && (
+                <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 text-left">
+                  <p className="font-semibold text-orange-800">Critical Values Detected</p>
+                  <p className="text-sm text-orange-700">{uploadResult.critical_values_count} abnormal value(s) found.</p>
+                  {uploadResult.abnormal_values?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {uploadResult.abnormal_values.map((val, idx) => (
+                        <span key={idx} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">{val}</span>
+                      ))}
                     </div>
                   )}
                 </div>
+              )}
+
+              <div className="flex gap-3">
+                <button onClick={handleReset} className="flex-1 px-4 py-3 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">
+                  Upload Another
+                </button>
+                <Link to="/laboratory/sent" className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2">
+                  <Eye className="w-5 h-5" /> View Sent
+                </Link>
               </div>
-            )}
-            
-            <div className="flex gap-3 justify-center">
-              <button onClick={resetForm} className="btn-secondary">
-                Upload Another
+            </motion.div>
+          )}
+
+          {step === 'error' && (
+            <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
+              <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-6" />
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">Upload Failed</h2>
+              <p className="text-gray-600 mb-6">{error}</p>
+              <button onClick={() => setStep('form')} className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                Try Again
               </button>
-              <button onClick={() => navigate('/laboratory/sent')} className="btn-primary flex items-center gap-2">
-                View History <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   )
 }

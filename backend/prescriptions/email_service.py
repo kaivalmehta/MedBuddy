@@ -12,6 +12,29 @@ logger = logging.getLogger(__name__)
 class EmailService:
     """Service for sending all types of emails"""
     
+    @staticmethod
+    def send_email(to_email, subject, html_content, text_content=None):
+        """Generic method to send any email"""
+        try:
+            if text_content is None:
+                # Strip HTML tags for text version
+                import re
+                text_content = re.sub('<[^<]+?>', '', html_content)
+            
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email]
+            )
+            msg.attach_alternative(html_content, "text/html")
+            msg.send(fail_silently=False)
+            logger.info(f"Email sent successfully to {to_email}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to send email to {to_email}: {e}")
+            return False
+    
     # ============================================
     # REGISTRATION / LOGIN OTP EMAILS
     # ============================================
