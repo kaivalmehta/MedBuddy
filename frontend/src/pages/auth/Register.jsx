@@ -3,7 +3,11 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../context/AuthContext'
 import { initiateRegistration, verifyRegistrationOTP, resendRegistrationOTP } from '../../services/api'
-import { Eye, EyeOff, Mail, Lock, User, Phone, Shield, ArrowLeft, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
+import { 
+  Eye, EyeOff, Mail, Lock, User, Phone, Shield, ArrowLeft, Loader2, 
+  AlertCircle, CheckCircle, Upload, Building, FileText, Stethoscope,
+  FlaskConical, Pill, MapPin
+} from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Register() {
@@ -19,16 +23,18 @@ export default function Register() {
   const [showPassword, setShowPassword] = useState(false)
   const [otpValues, setOtpValues] = useState(['', '', '', '', '', ''])
   const [resendTimer, setResendTimer] = useState(0)
+  const [verificationFile, setVerificationFile] = useState(null)
   
   const otpRefs = useRef([])
-  const { register, handleSubmit, watch, formState: { errors } } = useForm()
+  const fileInputRef = useRef(null)
+  const { register, handleSubmit, watch, formState: { errors }, reset } = useForm()
   const password = watch('password')
 
   const roles = [
-    { value: 'patient', label: '👤 Patient', desc: 'Manage your prescriptions' },
-    { value: 'pharmacy', label: '💊 Pharmacy', desc: 'Fulfill prescriptions' },
-    { value: 'doctor', label: '🩺 Doctor', desc: 'Create prescriptions' },
-    { value: 'laboratory', label: '🔬 Laboratory', desc: 'Upload lab reports' },
+    { value: 'patient', label: 'Patient', icon: User, desc: 'Manage your prescriptions', color: 'bg-blue-500' },
+    { value: 'doctor', label: 'Doctor', icon: Stethoscope, desc: 'Create prescriptions', color: 'bg-emerald-500' },
+    { value: 'pharmacy', label: 'Pharmacy', icon: Pill, desc: 'Fulfill prescriptions', color: 'bg-purple-500' },
+    { value: 'laboratory', label: 'Laboratory', icon: FlaskConical, desc: 'Upload lab reports', color: 'bg-amber-500' },
   ]
 
   // Resend timer countdown
@@ -46,14 +52,78 @@ export default function Register() {
     }
   }, [step])
 
+  // Handle file selection
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      // Validate file type
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+      if (!validTypes.includes(file.type)) {
+        setError('Please upload a PDF or image file (JPG, PNG)')
+        return
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('File size must be less than 5MB')
+        return
+      }
+      setVerificationFile(file)
+      setError('')
+    }
+  }
+
   // Step 1: Submit registration details
   const onSubmitDetails = async (data) => {
     setLoading(true)
     setError('')
 
     try {
-      const payload = { ...data, role }
-      await initiateRegistration(payload)
+      // Build FormData for file upload support
+      const formData = new FormData()
+      formData.append('email', data.email)
+      formData.append('username', data.username || data.email.split('@')[0])
+      formData.append('password', data.password)
+      formData.append('password_confirm', data.password_confirm)
+      formData.append('first_name', data.first_name || '')
+      formData.append('last_name', data.last_name || '')
+      formData.append('phone', data.phone || '')
+      formData.append('role', role)
+
+      // Add role-specific profile data
+      if (role === 'doctor') {
+        formData.append('doctor_profile', JSON.stringify({
+          specialization: data.specialization || '',
+          qualification: data.qualification || '',
+          registration_number: data.license_number || '',
+          clinic_name: data.clinic_name || '',
+          clinic_address: data.address || '',
+        }))
+      } else if (role === 'pharmacy') {
+        formData.append('pharmacy_profile', JSON.stringify({
+          name: data.business_name || '',
+          license_number: data.license_number || '',
+          address: data.address || '',
+          city: data.city || '',
+          state: data.state || '',
+          zip_code: data.zip_code || '',
+        }))
+      } else if (role === 'laboratory') {
+        formData.append('laboratory_profile', JSON.stringify({
+          name: data.business_name || '',
+          license_number: data.license_number || '',
+          address: data.address || '',
+          city: data.city || '',
+          state: data.state || '',
+          zip_code: data.zip_code || '',
+        }))
+      }
+
+      // Add verification document if provided
+      if (verificationFile && role !== 'patient') {
+        formData.append('verification_document', verificationFile)
+      }
+
+      await initiateRegistration(formData)
       setEmail(data.email)
       setStep('otp')
       setResendTimer(60)
@@ -127,16 +197,13 @@ export default function Register() {
       const response = await verifyRegistrationOTP({ email, otp_code: otpCode })
       console.log('[Register] OTP verify response:', response.data)
       
-      // Backend returns: { message, user, tokens: { access, refresh } }
       const { tokens, user } = response.data
       const { access, refresh } = tokens
 
-      // Save to localStorage
       localStorage.setItem('accessToken', access)
       localStorage.setItem('refreshToken', refresh)
       localStorage.setItem('user', JSON.stringify(user))
 
-      // Show success briefly then redirect
       setStep('success')
       setTimeout(() => {
         const dashboards = {
@@ -181,9 +248,190 @@ export default function Register() {
     setError('')
   }
 
+  // Render role-specific fields
+  const renderRoleFields = () => {
+    if (role === 'patient') return null
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, height: 0 }}
+        animate={{ opacity: 1, height: 'auto' }}
+        exit={{ opacity: 0, height: 0 }}
+        className="space-y-4 pt-4 border-t border-gray-200"
+      >
+        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <Building className="w-4 h-4" />
+          Professional Details
+        </h3>
+
+        {/* Doctor-specific fields */}
+        {role === 'doctor' && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Specialization *</label>
+                <input
+                  type="text"
+                  {...register('specialization', { required: role === 'doctor' ? 'Required' : false })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="e.g., Cardiology"
+                />
+                {errors.specialization && <p className="mt-1 text-xs text-red-500">{errors.specialization.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Qualification *</label>
+                <input
+                  type="text"
+                  {...register('qualification', { required: role === 'doctor' ? 'Required' : false })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="e.g., MBBS, MD"
+                />
+                {errors.qualification && <p className="mt-1 text-xs text-red-500">{errors.qualification.message}</p>}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Medical License Number *</label>
+              <input
+                type="text"
+                {...register('license_number', { required: role === 'doctor' ? 'Required' : false })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Your medical registration number"
+              />
+              {errors.license_number && <p className="mt-1 text-xs text-red-500">{errors.license_number.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Clinic/Hospital Name</label>
+              <input
+                type="text"
+                {...register('clinic_name')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Your clinic or hospital name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Clinic Address</label>
+              <input
+                type="text"
+                {...register('address')}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Full address"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Pharmacy & Laboratory fields */}
+        {(role === 'pharmacy' || role === 'laboratory') && (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {role === 'pharmacy' ? 'Pharmacy Name *' : 'Laboratory Name *'}
+              </label>
+              <input
+                type="text"
+                {...register('business_name', { required: 'Required' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder={role === 'pharmacy' ? 'Your pharmacy name' : 'Your laboratory name'}
+              />
+              {errors.business_name && <p className="mt-1 text-xs text-red-500">{errors.business_name.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">License/Registration Number *</label>
+              <input
+                type="text"
+                {...register('license_number', { required: 'Required' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Business license number"
+              />
+              {errors.license_number && <p className="mt-1 text-xs text-red-500">{errors.license_number.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Address *</label>
+              <input
+                type="text"
+                {...register('address', { required: 'Required' })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                placeholder="Street address"
+              />
+              {errors.address && <p className="mt-1 text-xs text-red-500">{errors.address.message}</p>}
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                <input
+                  type="text"
+                  {...register('city', { required: 'Required' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="City"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                <input
+                  type="text"
+                  {...register('state', { required: 'Required' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="State"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code *</label>
+                <input
+                  type="text"
+                  {...register('zip_code', { required: 'Required' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="ZIP"
+                />
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Verification Document Upload */}
+        <div className="pt-2">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            <FileText className="w-4 h-4 inline mr-1" />
+            License Document (PDF/Image) *
+          </label>
+          <div 
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+              verificationFile 
+                ? 'border-green-300 bg-green-50' 
+                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileChange}
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="hidden"
+            />
+            {verificationFile ? (
+              <div className="flex items-center justify-center gap-2 text-green-700">
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">{verificationFile.name}</span>
+              </div>
+            ) : (
+              <div className="text-gray-500">
+                <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p className="text-sm">Click to upload your license document</p>
+                <p className="text-xs text-gray-400 mt-1">PDF, JPG, PNG (max 5MB)</p>
+              </div>
+            )}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            This document will be reviewed by our admin team for verification.
+          </p>
+        </div>
+      </motion.div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg">
         <AnimatePresence mode="wait">
           {step === 'details' && (
             <motion.div
@@ -215,131 +463,147 @@ export default function Register() {
                       <button
                         key={r.value}
                         type="button"
-                        onClick={() => setRole(r.value)}
-                        className={`p-3 rounded-lg border-2 text-left transition-all ${
-                          role === r.value
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                        onClick={() => {
+                          setRole(r.value)
+                          setVerificationFile(null)
+                        }}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${
+                          role === r.value 
+                            ? 'border-blue-500 bg-blue-50 shadow-sm' 
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
-                        <span className="text-lg">{r.label}</span>
-                        <p className="text-xs mt-1 opacity-70">{r.desc}</p>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 ${r.color} rounded-lg flex items-center justify-center`}>
+                            <r.icon className="w-4 h-4 text-white" />
+                          </div>
+                          <div>
+                            <p className={`font-medium text-sm ${role === r.value ? 'text-blue-700' : 'text-gray-700'}`}>
+                              {r.label}
+                            </p>
+                            <p className="text-xs text-gray-500">{r.desc}</p>
+                          </div>
+                        </div>
                       </button>
                     ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                {/* Name Fields */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">First Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       <input
-                        {...register('first_name', { required: 'Required' })}
-                        className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        type="text"
+                        {...register('first_name')}
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         placeholder="John"
                       />
                     </div>
-                    {errors.first_name && <p className="mt-1 text-xs text-red-500">{errors.first_name.message}</p>}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Last Name</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name</label>
                     <input
-                      {...register('last_name', { required: 'Required' })}
-                      className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      type="text"
+                      {...register('last_name')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       placeholder="Doe"
                     />
-                    {errors.last_name && <p className="mt-1 text-xs text-red-500">{errors.last_name.message}</p>}
                   </div>
                 </div>
 
+                {/* Email */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      {...register('username', { 
-                        required: 'Username is required',
-                        minLength: { value: 3, message: 'At least 3 characters' },
-                        pattern: { value: /^[a-zA-Z0-9_]+$/, message: 'Only letters, numbers, underscores' }
-                      })}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="johndoe"
-                    />
-                  </div>
-                  {errors.username && <p className="mt-1 text-sm text-red-500">{errors.username.message}</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="email"
                       {...register('email', {
                         required: 'Email is required',
                         pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' }
                       })}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       placeholder="you@example.com"
                     />
                   </div>
-                  {errors.email && <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>}
+                  {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
                 </div>
 
+                {/* Phone */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Phone (optional)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone {role !== 'patient' && '*'}</label>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="tel"
-                      {...register('phone')}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      {...register('phone', { required: role !== 'patient' ? 'Phone required for professionals' : false })}
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                       placeholder="+1 234 567 8900"
                     />
                   </div>
+                  {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone.message}</p>}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      {...register('password', {
-                        required: 'Password is required',
-                        minLength: { value: 8, message: 'At least 8 characters' }
-                      })}
-                      className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
+                {/* Password Fields */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        {...register('password', {
+                          required: 'Password is required',
+                          minLength: { value: 8, message: 'Min 8 characters' }
+                        })}
+                        className="w-full pl-9 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        placeholder="••••••••"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    {errors.password && <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>}
                   </div>
-                  {errors.password && <p className="mt-1 text-sm text-red-500">{errors.password.message}</p>}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm *</label>
+                    <div className="relative">
+                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="password"
+                        {...register('password_confirm', {
+                          required: 'Confirm password',
+                          validate: v => v === password || 'Passwords must match'
+                        })}
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    {errors.password_confirm && <p className="mt-1 text-xs text-red-500">{errors.password_confirm.message}</p>}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="password"
-                      {...register('password_confirm', {
-                        required: 'Please confirm password',
-                        validate: v => v === password || 'Passwords do not match'
-                      })}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="••••••••"
-                    />
+                {/* Role-specific fields */}
+                <AnimatePresence mode="wait">
+                  {renderRoleFields()}
+                </AnimatePresence>
+
+                {/* Professional Notice */}
+                {role !== 'patient' && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-xs text-amber-700">
+                      <AlertCircle className="w-4 h-4 inline mr-1" />
+                      Professional accounts require admin verification. You'll have limited access until your credentials are verified.
+                    </p>
                   </div>
-                  {errors.password_confirm && <p className="mt-1 text-sm text-red-500">{errors.password_confirm.message}</p>}
-                </div>
+                )}
 
                 <button
                   type="submit"
@@ -471,7 +735,10 @@ export default function Register() {
                 Account Created!
               </h2>
               <p className="text-gray-600">
-                Welcome to MedBuddy. Redirecting you to your dashboard...
+                {role !== 'patient' 
+                  ? 'Your professional account is pending verification. Redirecting...'
+                  : 'Welcome to MedBuddy. Redirecting you to your dashboard...'
+                }
               </p>
               <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mt-4" />
             </motion.div>

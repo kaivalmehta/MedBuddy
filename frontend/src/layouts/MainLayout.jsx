@@ -9,7 +9,7 @@ import {
   Heart, Home, Upload, FileText, User, Users, Bell, MapPin,
   ShoppingBag, LayoutDashboard, Package, Boxes, Menu, X, LogOut,
   ChevronRight, Settings, Stethoscope, FlaskConical, UserSearch,
-  FilePlus, ClipboardList, History, Send, TestTube
+  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp
 } from 'lucide-react'
 
 // Navigation items for each role
@@ -28,10 +28,11 @@ const patientNav = [
 
 const pharmacyNav = [
   { path: '/pharmacy', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/pharmacy/patient-access', icon: UserSearch, label: 'Access Patient' },
   { path: '/pharmacy/scan', icon: Upload, label: 'Scan & Send' },
   { path: '/pharmacy/sent', icon: Send, label: 'Sent Prescriptions' },
   { divider: true },
-  { path: '/pharmacy/orders', icon: Package, label: 'Incoming Orders' },
+  { path: '/pharmacy/sales', icon: TrendingUp, label: 'Sales Dashboard' },
   { path: '/pharmacy/inventory', icon: Boxes, label: 'Inventory' },
 ]
 

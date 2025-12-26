@@ -59,6 +59,32 @@ class AzureServices:
         )
         return blob_name, blob_client.url
     
+    def upload_verification_document(self, file, role, identifier):
+        """Upload verification document (license PDF) for professionals."""
+        ext = file.name.split('.')[-1].lower()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        blob_name = f"verification/{role}/{identifier}_{timestamp}.{ext}"
+        
+        container_client = self.blob_service.get_container_client(self.container_name)
+        try:
+            container_client.create_container()
+        except Exception:
+            pass
+        
+        content_type_map = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'pdf': 'application/pdf'
+        }
+        content_type = content_type_map.get(ext, 'application/octet-stream')
+        
+        blob_client = container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(
+            file.read(),
+            content_settings=ContentSettings(content_type=content_type),
+            overwrite=True
+        )
+        return blob_name, blob_client.url
+    
     def extract_text(self, image_url):
         """Extract text using Azure Computer Vision Read API."""
         analyze_url = f"{self.vision_endpoint.rstrip('/')}/vision/v3.2/read/analyze"

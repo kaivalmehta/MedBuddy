@@ -29,8 +29,9 @@ import LabReportDetail from './pages/patient/LabReportDetail'
 import PharmacyDashboard from './pages/pharmacy/PharmacyDashboard'
 import PharmacyScanSend from './pages/pharmacy/PharmacyScanSend'
 import PharmacySentHistory from './pages/pharmacy/PharmacySentHistory'
-import OrderQueue from './pages/pharmacy/OrderQueue'
-import OrderDetail from './pages/pharmacy/OrderDetail'
+import PharmacyPatientAccess from './pages/pharmacy/PharmacyPatientAccess'
+import PharmacyPatientHistory from './pages/pharmacy/PharmacyPatientHistory'
+import SalesDashboard from './pages/pharmacy/SalesDashboard'
 import Inventory from './pages/pharmacy/Inventory'
 
 // Doctor Pages
@@ -127,10 +128,11 @@ export default function App() {
       {/* Pharmacy Routes */}
       <Route element={<ProtectedRoute allowedRoles={['pharmacy']}><MainLayout /></ProtectedRoute>}>
         <Route path="/pharmacy" element={<PharmacyDashboard />} />
+        <Route path="/pharmacy/patient-access" element={<PharmacyPatientAccess />} />
+        <Route path="/pharmacy/patient/:patientId" element={<PharmacyPatientHistory />} />
         <Route path="/pharmacy/scan" element={<PharmacyScanSend />} />
         <Route path="/pharmacy/sent" element={<PharmacySentHistory />} />
-        <Route path="/pharmacy/orders" element={<OrderQueue />} />
-        <Route path="/pharmacy/orders/:id" element={<OrderDetail />} />
+        <Route path="/pharmacy/sales" element={<SalesDashboard />} />
         <Route path="/pharmacy/inventory" element={<Inventory />} />
       </Route>
       

@@ -5,18 +5,19 @@ from rest_framework import generics, views, status
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, BasePermission
 from rest_framework.parsers import MultiPartParser, FormParser
-from django.db.models import Count, Sum, Avg
+from django.db.models import Count, Sum, Avg, F, Q
 from django.db.models.functions import Radians, Sin, Cos, ACos
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from datetime import date
 
-from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale
 from .serializers import (
     PharmacySerializer, PharmacyOrderSerializer,
     OrderStatusUpdateSerializer, PharmacyInventorySerializer,
-    PharmacyReviewSerializer, ChatMessageSerializer
+    PharmacyReviewSerializer, ChatMessageSerializer,
+    PharmacySaleSerializer, DispenseItemSerializer
 )
 
 from users.models import User, PatientAccessToken, HealthProfile
@@ -125,25 +126,31 @@ class PharmacyDashboardView(views.APIView):
             source='pharmacy'
         )
         
-        # Orders
+        # Get pharmacy and inventory stats
         try:
             pharmacy = request.user.pharmacy_profile
-            orders = PharmacyOrder.objects.filter(pharmacy=pharmacy)
-            orders_today = orders.filter(created_at__date=today).count()
-            pending_orders = orders.filter(status__in=['received', 'verified', 'preparing']).count()
-            completed_orders = orders.filter(status='completed').count()
+            inventory = PharmacyInventory.objects.filter(pharmacy=pharmacy)
+            low_stock_count = inventory.filter(
+                quantity_in_stock__lte=F('reorder_level'),
+                quantity_in_stock__gt=0
+            ).count()
+            
+            # Sales stats
+            today_sales = PharmacySale.objects.filter(
+                pharmacy=pharmacy,
+                created_at__date=today,
+                quantity__gt=0
+            ).count()
         except:
-            orders_today = 0
-            pending_orders = 0
-            completed_orders = 0
+            low_stock_count = 0
+            today_sales = 0
         
         return Response({
-            'prescriptions_sent_total': sent_prescriptions.count(),
-            'prescriptions_sent_today': sent_prescriptions.filter(created_at__date=today).count(),
-            'orders_received_today': orders_today,
-            'pending_orders': pending_orders,
-            'completed_orders': completed_orders,
-            'unique_patients': sent_prescriptions.values('user').distinct().count(),
+            'total_prescriptions': sent_prescriptions.count(),
+            'prescriptions_today': sent_prescriptions.filter(created_at__date=today).count(),
+            'patients_served': sent_prescriptions.values('user').distinct().count(),
+            'today_sales': today_sales,
+            'low_stock_items': low_stock_count,
             'is_verified': request.user.is_professional_verified
         })
 
@@ -290,10 +297,188 @@ class PharmacyVerifyPatientOTPView(views.APIView):
             return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
         
         return Response({
-            'message': 'Access granted. You can now upload prescription.',
+            'message': 'Access granted. You can now view patient history and upload prescriptions.',
             'access_token_id': str(token.id),
             'session_expires_at': token.session_expires_at,
-            'patient_email': patient_email
+            'patient': {
+                'id': str(token.patient.id),
+                'email': token.patient.email,
+                'name': f"{token.patient.first_name} {token.patient.last_name}".strip() or token.patient.email
+            }
+        })
+
+
+class PharmacyActiveSessionsView(views.APIView):
+    """View pharmacy's active patient sessions"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        sessions = PatientAccessToken.objects.filter(
+            requester=request.user,
+            access_granted=True,
+            session_expires_at__gt=timezone.now()
+        ).select_related('patient').order_by('-access_granted_at')
+        
+        return Response({
+            'count': sessions.count(),
+            'sessions': [{
+                'id': str(s.id),
+                'patient_id': str(s.patient.id),
+                'patient_email': s.patient.email,
+                'patient_name': f"{s.patient.first_name} {s.patient.last_name}".strip() or s.patient.email,
+                'expires_at': s.session_expires_at,
+                'granted_at': s.access_granted_at
+            } for s in sessions]
+        })
+
+
+class PharmacyPatientHistoryView(views.APIView):
+    """
+    View patient's prescription and report history.
+    Requires valid access session from OTP verification.
+    """
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request, patient_id):
+        # Verify pharmacy has active access to this patient
+        access_token = PatientAccessToken.objects.filter(
+            patient_id=patient_id,
+            requester=request.user,
+            access_granted=True,
+            session_expires_at__gt=timezone.now()
+        ).first()
+        
+        if not access_token:
+            return Response({
+                'error': 'Access denied. Please verify OTP to access patient data.',
+                'requires_otp': True
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        patient = get_object_or_404(User, pk=patient_id, role='patient')
+        
+        # Get prescriptions (non-duplicate) with drugs and compliance
+        prescriptions = Prescription.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).prefetch_related(
+            'drugs',
+            'drugs__reminders',
+            'drugs__interactions'
+        ).order_by('-created_at')[:20]
+        
+        # Get lab reports (non-duplicate)
+        from prescriptions.models import LabReport
+        reports = LabReport.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).order_by('-created_at')[:20]
+        
+        # Get health profile
+        try:
+            hp = patient.health_profile
+            health_profile = {
+                'blood_type': hp.blood_type,
+                'gender': hp.gender,
+                'date_of_birth': hp.date_of_birth,
+                'age': hp.age,
+                'height_cm': hp.height_cm,
+                'weight_kg': hp.weight_kg,
+                'allergies': hp.allergies or [],
+                'medical_conditions': hp.medical_conditions or [],
+                'current_medications': hp.current_medications or [],
+                'emergency_contact_name': hp.emergency_contact_name,
+                'emergency_contact_phone': hp.emergency_contact_phone
+            }
+        except:
+            health_profile = None
+        
+        # Serialize prescriptions with detailed medication data
+        prescriptions_data = []
+        for p in prescriptions:
+            medications = []
+            for d in p.drugs.all():
+                # Get compliance data from reminders
+                doses_taken = 0
+                doses_missed = 0
+                last_taken = None
+                
+                for reminder in d.reminders.all():
+                    doses_taken += reminder.doses_taken
+                    doses_missed += reminder.doses_missed
+                    if reminder.last_taken_at:
+                        if not last_taken or reminder.last_taken_at > last_taken:
+                            last_taken = reminder.last_taken_at
+                
+                total_doses = doses_taken + doses_missed
+                adherence_rate = round((doses_taken / total_doses * 100)) if total_doses > 0 else 0
+                
+                # Get interactions
+                interactions = [{
+                    'type': i.interaction_type,
+                    'severity': i.severity,
+                    'interacting_item': i.interacting_item,
+                    'title': i.title,
+                    'description': i.description,
+                    'recommendation': i.recommendation
+                } for i in d.interactions.all()]
+                
+                medications.append({
+                    'id': str(d.id),
+                    'drug_name': d.drug_name,
+                    'generic_name': d.generic_name,
+                    'dosage': d.dosage,
+                    'frequency': d.frequency,
+                    'duration': d.duration,
+                    'quantity': d.quantity,
+                    'instructions': d.instructions,
+                    'category': d.category,
+                    'primary_use': d.primary_use,
+                    'safety_percentage': d.safety_percentage,
+                    'is_safe_to_take': d.is_safe_to_take,
+                    'requires_monitoring': d.requires_monitoring,
+                    'special_instructions': d.special_instructions,
+                    'common_side_effects': d.common_side_effects or [],
+                    'interactions': interactions,
+                    'compliance': {
+                        'doses_taken': doses_taken,
+                        'doses_missed': doses_missed,
+                        'adherence_rate': adherence_rate,
+                        'last_taken_at': last_taken,
+                        'is_active': d.reminders.filter(is_active=True).exists()
+                    }
+                })
+            
+            prescriptions_data.append({
+                'id': str(p.id),
+                'doctor_name': p.doctor_name,
+                'clinic_name': p.clinic_name,
+                'prescription_date': p.prescription_date,
+                'status': p.status,
+                'overall_safety_percentage': p.overall_safety_percentage,
+                'source': p.source,
+                'created_at': p.created_at,
+                'medications': medications
+            })
+        
+        return Response({
+            'patient': {
+                'id': str(patient.id),
+                'email': patient.email,
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'phone': patient.phone
+            },
+            'health_profile': health_profile,
+            'prescriptions': prescriptions_data,
+            'lab_reports': [{
+                'id': str(r.id),
+                'report_type': r.report_type,
+                'report_title': r.report_title,
+                'report_date': r.report_date,
+                'laboratory_name': r.laboratory_name,
+                'status': r.status,
+                'created_at': r.created_at
+            } for r in reports],
+            'session_expires_at': access_token.session_expires_at
         })
 
 
@@ -477,29 +662,107 @@ class PharmacyAnalyzePrescriptionView(views.APIView):
 
 
 class PharmacyPrescriptionHistoryView(views.APIView):
-    """List prescriptions sent by this pharmacy"""
+    """List prescriptions sent by this pharmacy with detailed analysis"""
     permission_classes = [IsAuthenticated, IsPharmacyUser]
     
     def get(self, request):
+        search = request.query_params.get('search', '')
+        status_filter = request.query_params.get('status', '')
+        
         prescriptions = Prescription.objects.filter(
             sent_by=request.user,
             source='pharmacy'
-        ).select_related('user').order_by('-created_at')
+        ).select_related('user').prefetch_related(
+            'drugs', 'drugs__interactions'
+        ).order_by('-created_at')
         
-        return Response({
-            'count': prescriptions.count(),
-            'prescriptions': [{
+        if search:
+            prescriptions = prescriptions.filter(
+                Q(user__email__icontains=search) |
+                Q(user__first_name__icontains=search) |
+                Q(doctor_name__icontains=search)
+            )
+        
+        if status_filter:
+            prescriptions = prescriptions.filter(status=status_filter)
+        
+        results = []
+        for p in prescriptions[:50]:
+            # Get patient allergies for context
+            patient_allergies = []
+            patient_conditions = []
+            try:
+                if p.user and hasattr(p.user, 'health_profile'):
+                    hp = p.user.health_profile
+                    patient_allergies = hp.allergies or []
+                    patient_conditions = hp.medical_conditions or []
+            except:
+                pass
+            
+            # Build detailed medication list
+            medications = []
+            total_interactions = 0
+            critical_count = 0
+            
+            for d in p.drugs.all():
+                interactions = []
+                for inter in d.interactions.all():
+                    interactions.append({
+                        'type': inter.interaction_type,
+                        'severity': inter.severity,
+                        'interacting_item': inter.interacting_item,
+                        'title': inter.title,
+                        'description': inter.description,
+                        'recommendation': inter.recommendation
+                    })
+                    total_interactions += 1
+                    if inter.severity in ['severe', 'critical']:
+                        critical_count += 1
+                
+                medications.append({
+                    'id': str(d.id),
+                    'drug_name': d.drug_name,
+                    'generic_name': d.generic_name,
+                    'dosage': d.dosage,
+                    'frequency': d.frequency,
+                    'duration': d.duration,
+                    'quantity': d.quantity,
+                    'instructions': d.instructions,
+                    'category': d.category,
+                    'primary_use': d.primary_use,
+                    'safety_percentage': d.safety_percentage,
+                    'safety_status': d.safety_status,
+                    'is_safe_to_take': d.is_safe_to_take,
+                    'requires_monitoring': d.requires_monitoring,
+                    'special_instructions': d.special_instructions,
+                    'common_side_effects': d.common_side_effects or [],
+                    'interactions': interactions
+                })
+            
+            results.append({
                 'id': str(p.id),
-                'patient_email': p.user.email,
-                'patient_name': f"{p.user.first_name} {p.user.last_name}".strip() or p.user.email,
+                'patient_email': p.user.email if p.user else 'Unknown',
+                'patient_name': f"{p.user.first_name} {p.user.last_name}".strip() if p.user else '',
+                'patient_allergies': patient_allergies,
+                'patient_conditions': patient_conditions,
                 'doctor_name': p.doctor_name,
+                'clinic_name': p.clinic_name,
                 'prescription_date': p.prescription_date,
                 'status': p.status,
-                'drugs_count': p.drugs.count(),
+                'drugs_count': len(medications),
                 'is_duplicate': p.is_duplicate,
                 'email_sent': p.email_sent,
+                'overall_safety_percentage': p.overall_safety_percentage,
+                'safety_status': p.safety_status,
+                'total_interactions': total_interactions,
+                'critical_warnings': critical_count,
+                'medications': medications,
                 'created_at': p.created_at
-            } for p in prescriptions[:50]]
+            })
+        
+        return Response({
+            'count': len(results),
+            'prescriptions': results
         })
 
 
@@ -590,16 +853,70 @@ class VerifyPrescriptionView(views.APIView):
 # ============================================
 
 class InventoryListView(generics.ListCreateAPIView):
-    """List and create inventory items"""
+    """List and create inventory items with filtering"""
     serializer_class = PharmacyInventorySerializer
     permission_classes = [IsAuthenticated, IsPharmacyUser]
     
     def get_queryset(self):
-        return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+        qs = PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+        
+        # Filtering
+        search = self.request.query_params.get('search', '')
+        category = self.request.query_params.get('category', '')
+        status = self.request.query_params.get('status', '')  # low_stock, out_of_stock, expiring, expired
+        
+        if search:
+            qs = qs.filter(
+                Q(drug_name__icontains=search) |
+                Q(generic_name__icontains=search) |
+                Q(manufacturer__icontains=search) |
+                Q(sku__icontains=search)
+            )
+        
+        if category:
+            qs = qs.filter(category=category)
+        
+        if status == 'low_stock':
+            qs = qs.filter(quantity_in_stock__lte=F('reorder_level'), quantity_in_stock__gt=0)
+        elif status == 'out_of_stock':
+            qs = qs.filter(quantity_in_stock=0)
+        elif status == 'expiring':
+            from datetime import date, timedelta
+            qs = qs.filter(expiry_date__lte=date.today() + timedelta(days=30), expiry_date__gt=date.today())
+        elif status == 'expired':
+            from datetime import date
+            qs = qs.filter(expiry_date__lt=date.today())
+        
+        return qs.order_by('drug_name')
     
     def perform_create(self, serializer):
         pharmacy = Pharmacy.objects.get(user=self.request.user)
         serializer.save(pharmacy=pharmacy)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # Calculate stats
+        all_items = PharmacyInventory.objects.filter(pharmacy__user=request.user)
+        from datetime import date, timedelta
+        today = date.today()
+        
+        stats = {
+            'total_items': all_items.count(),
+            'in_stock': all_items.filter(quantity_in_stock__gt=F('reorder_level')).count(),
+            'low_stock': all_items.filter(quantity_in_stock__lte=F('reorder_level'), quantity_in_stock__gt=0).count(),
+            'out_of_stock': all_items.filter(quantity_in_stock=0).count(),
+            'expiring_soon': all_items.filter(expiry_date__lte=today + timedelta(days=30), expiry_date__gt=today).count(),
+            'expired': all_items.filter(expiry_date__lt=today).count(),
+            'total_value': sum(float(i.unit_price) * i.quantity_in_stock for i in all_items),
+            'categories': list(all_items.values('category').annotate(count=Count('id')).order_by('-count'))
+        }
+        
+        return Response({
+            'stats': stats,
+            'results': serializer.data
+        })
 
 
 class InventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -609,6 +926,328 @@ class InventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
     
     def get_queryset(self):
         return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+
+
+class InventoryRestockView(views.APIView):
+    """Restock an inventory item"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request, pk):
+        item = get_object_or_404(PharmacyInventory, pk=pk, pharmacy__user=request.user)
+        quantity = request.data.get('quantity', 0)
+        batch_number = request.data.get('batch_number', '')
+        expiry_date = request.data.get('expiry_date')
+        cost_price = request.data.get('cost_price')
+        
+        if quantity <= 0:
+            return Response({'error': 'Quantity must be positive'}, status=400)
+        
+        item.quantity_in_stock += quantity
+        item.last_restocked = timezone.now()
+        if batch_number:
+            item.batch_number = batch_number
+        if expiry_date:
+            item.expiry_date = expiry_date
+        if cost_price:
+            item.cost_price = cost_price
+        item.is_available = True
+        item.save()
+        
+        return Response({
+            'message': f'Added {quantity} units to {item.drug_name}',
+            'new_quantity': item.quantity_in_stock
+        })
+
+
+class InventoryAlertsView(views.APIView):
+    """Get inventory alerts (low stock, expiring, expired)"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        from datetime import date, timedelta
+        today = date.today()
+        
+        items = PharmacyInventory.objects.filter(pharmacy__user=request.user)
+        
+        low_stock = items.filter(
+            quantity_in_stock__lte=F('reorder_level'),
+            quantity_in_stock__gt=0
+        ).values('id', 'drug_name', 'quantity_in_stock', 'reorder_level')
+        
+        out_of_stock = items.filter(quantity_in_stock=0).values('id', 'drug_name')
+        
+        expiring_soon = items.filter(
+            expiry_date__lte=today + timedelta(days=30),
+            expiry_date__gt=today
+        ).values('id', 'drug_name', 'expiry_date', 'quantity_in_stock', 'batch_number')
+        
+        expired = items.filter(expiry_date__lt=today).values(
+            'id', 'drug_name', 'expiry_date', 'quantity_in_stock', 'batch_number'
+        )
+        
+        return Response({
+            'low_stock': list(low_stock),
+            'out_of_stock': list(out_of_stock),
+            'expiring_soon': list(expiring_soon),
+            'expired': list(expired),
+            'total_alerts': len(low_stock) + len(out_of_stock) + len(expiring_soon) + len(expired)
+        })
+
+
+class InventoryBulkUpdateView(views.APIView):
+    """Bulk update inventory quantities (for quick stock adjustments)"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request):
+        updates = request.data.get('updates', [])  # [{id, quantity}, ...]
+        
+        updated = 0
+        for update in updates:
+            try:
+                item = PharmacyInventory.objects.get(
+                    id=update['id'],
+                    pharmacy__user=request.user
+                )
+                item.quantity_in_stock = update['quantity']
+                item.is_available = item.quantity_in_stock > 0
+                item.save()
+                updated += 1
+            except PharmacyInventory.DoesNotExist:
+                continue
+        
+        return Response({'updated': updated})
+
+
+# ============================================
+# SALES / DISPENSE VIEWS
+# ============================================
+
+class DispenseItemView(views.APIView):
+    """Dispense/sell an inventory item"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    @transaction.atomic
+    def post(self, request):
+        serializer = DispenseItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        
+        # Get inventory item
+        try:
+            item = PharmacyInventory.objects.get(
+                id=data['inventory_item_id'],
+                pharmacy__user=request.user
+            )
+        except PharmacyInventory.DoesNotExist:
+            return Response({'error': 'Item not found'}, status=404)
+        
+        quantity = data['quantity']
+        
+        # Check stock
+        if item.quantity_in_stock < quantity:
+            return Response({
+                'error': f'Insufficient stock. Available: {item.quantity_in_stock}'
+            }, status=400)
+        
+        # Handle return (add back to stock)
+        if data['sale_type'] == 'return':
+            item.quantity_in_stock += quantity
+            item.save()
+            
+            # Create negative sale record
+            sale = PharmacySale.objects.create(
+                pharmacy=item.pharmacy,
+                inventory_item=item,
+                drug_name=item.drug_name,
+                generic_name=item.generic_name or '',
+                quantity=-quantity,
+                unit_price=item.unit_price,
+                cost_price=item.cost_price,
+                sale_type='return',
+                customer_name=data.get('customer_name', ''),
+                customer_phone=data.get('customer_phone', ''),
+                notes=data.get('notes', ''),
+                sold_by=request.user
+            )
+            
+            return Response({
+                'message': f'Return processed: {quantity} units added back',
+                'new_quantity': item.quantity_in_stock,
+                'sale_id': str(sale.id)
+            })
+        
+        # Regular sale - reduce stock
+        item.quantity_in_stock -= quantity
+        item.is_available = item.quantity_in_stock > 0
+        item.save()
+        
+        # Get prescription if provided
+        prescription = None
+        if data.get('prescription_id'):
+            try:
+                prescription = Prescription.objects.get(id=data['prescription_id'])
+            except Prescription.DoesNotExist:
+                pass
+        
+        # Create sale record
+        sale = PharmacySale.objects.create(
+            pharmacy=item.pharmacy,
+            inventory_item=item,
+            prescription=prescription,
+            drug_name=item.drug_name,
+            generic_name=item.generic_name or '',
+            quantity=quantity,
+            unit_price=item.unit_price,
+            cost_price=item.cost_price,
+            sale_type=data['sale_type'],
+            customer_name=data.get('customer_name', ''),
+            customer_phone=data.get('customer_phone', ''),
+            notes=data.get('notes', ''),
+            sold_by=request.user
+        )
+        
+        return Response({
+            'message': f'Dispensed {quantity} units of {item.drug_name}',
+            'new_quantity': item.quantity_in_stock,
+            'sale_id': str(sale.id),
+            'total_price': float(sale.total_price)
+        })
+
+
+class SalesHistoryView(views.APIView):
+    """Get sales history with filtering"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        pharmacy = Pharmacy.objects.get(user=request.user)
+        sales = PharmacySale.objects.filter(pharmacy=pharmacy)
+        
+        # Filters
+        sale_type = request.query_params.get('type', '')
+        date_from = request.query_params.get('from', '')
+        date_to = request.query_params.get('to', '')
+        search = request.query_params.get('search', '')
+        
+        if sale_type:
+            sales = sales.filter(sale_type=sale_type)
+        if date_from:
+            sales = sales.filter(created_at__date__gte=date_from)
+        if date_to:
+            sales = sales.filter(created_at__date__lte=date_to)
+        if search:
+            sales = sales.filter(
+                Q(drug_name__icontains=search) |
+                Q(customer_name__icontains=search)
+            )
+        
+        sales = sales.order_by('-created_at')[:100]
+        
+        return Response({
+            'count': sales.count(),
+            'sales': [{
+                'id': str(s.id),
+                'drug_name': s.drug_name,
+                'generic_name': s.generic_name,
+                'quantity': s.quantity,
+                'unit_price': float(s.unit_price),
+                'total_price': float(s.total_price),
+                'profit': float(s.profit) if s.profit else None,
+                'sale_type': s.sale_type,
+                'customer_name': s.customer_name,
+                'created_at': s.created_at
+            } for s in sales]
+        })
+
+
+class SalesDashboardView(views.APIView):
+    """Get sales dashboard stats"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        from datetime import timedelta
+        pharmacy = Pharmacy.objects.get(user=request.user)
+        today = date.today()
+        
+        # Get all sales
+        all_sales = PharmacySale.objects.filter(pharmacy=pharmacy, quantity__gt=0)  # Exclude returns
+        
+        # Today's sales
+        today_sales = all_sales.filter(created_at__date=today)
+        today_revenue = today_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        today_profit = today_sales.aggregate(total=Sum('profit'))['total'] or 0
+        today_count = today_sales.count()
+        
+        # This week
+        week_start = today - timedelta(days=today.weekday())
+        week_sales = all_sales.filter(created_at__date__gte=week_start)
+        week_revenue = week_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        week_profit = week_sales.aggregate(total=Sum('profit'))['total'] or 0
+        
+        # This month
+        month_sales = all_sales.filter(
+            created_at__month=today.month,
+            created_at__year=today.year
+        )
+        month_revenue = month_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        month_profit = month_sales.aggregate(total=Sum('profit'))['total'] or 0
+        
+        # Top selling items (this month)
+        top_items = month_sales.values('drug_name').annotate(
+            total_qty=Sum('quantity'),
+            total_revenue=Sum('total_price')
+        ).order_by('-total_qty')[:10]
+        
+        # Sales by type (this month)
+        by_type = month_sales.values('sale_type').annotate(
+            count=Count('id'),
+            revenue=Sum('total_price')
+        )
+        
+        # Daily sales for chart (last 7 days)
+        daily_sales = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_total = all_sales.filter(created_at__date=day).aggregate(
+                revenue=Sum('total_price'),
+                count=Count('id')
+            )
+            daily_sales.append({
+                'date': day.strftime('%Y-%m-%d'),
+                'day': day.strftime('%a'),
+                'revenue': float(day_total['revenue'] or 0),
+                'count': day_total['count'] or 0
+            })
+        
+        # Recent sales
+        recent = all_sales.order_by('-created_at')[:10]
+        recent_sales = [{
+            'id': str(s.id),
+            'drug_name': s.drug_name,
+            'quantity': s.quantity,
+            'total_price': float(s.total_price),
+            'sale_type': s.sale_type,
+            'created_at': s.created_at
+        } for s in recent]
+        
+        return Response({
+            'today': {
+                'revenue': float(today_revenue),
+                'profit': float(today_profit),
+                'count': today_count
+            },
+            'week': {
+                'revenue': float(week_revenue),
+                'profit': float(week_profit)
+            },
+            'month': {
+                'revenue': float(month_revenue),
+                'profit': float(month_profit)
+            },
+            'top_items': list(top_items),
+            'by_type': list(by_type),
+            'daily_sales': daily_sales,
+            'recent_sales': recent_sales
+        })
 
 
 # ============================================
