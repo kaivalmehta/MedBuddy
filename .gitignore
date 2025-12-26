@@ -35,6 +35,7 @@ staticfiles/
 
 # Environment variables
 .env
+backend/.env
 .env.local
 .env.*.local
 *.env
@@ -61,7 +62,8 @@ frontend/build/
 # Logs
 logs/
 *.log
-
+backend/logs/
+backend/logs/*.log
 # Coverage
 htmlcov/
 .tox/
