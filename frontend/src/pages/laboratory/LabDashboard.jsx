@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../context/AuthContext'
 import { laboratoryService } from '../../services/professional'
 import { 
   FlaskConical, Upload, Send, FileText, TrendingUp, Users, Calendar,
@@ -9,6 +10,7 @@ import {
 import { motion } from 'framer-motion'
 
 export default function LabDashboard() {
+  const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -279,8 +281,33 @@ export default function LabDashboard() {
         )}
       </div>
 
-      {/* Not Verified Warning */}
-      {stats && !stats.is_verified && (
+      {/* Rejection Warning */}
+      {user?.is_rejected && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-red-50 border border-red-200 rounded-xl"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-red-800">Verification Rejected</h4>
+              <p className="text-sm text-red-700 mt-1">
+                Your laboratory verification was rejected. Reason: {user.rejection_reason || 'No reason provided'}
+              </p>
+              <p className="text-sm text-red-600 mt-2">
+                Please contact support or update your verification documents.
+              </p>
+              <Link to="/laboratory/profile" className="text-sm text-red-800 font-medium hover:underline mt-2 inline-block">
+                Update Profile →
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Not Verified Warning - only show if not rejected */}
+      {stats && !stats.is_verified && !user?.is_rejected && (
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

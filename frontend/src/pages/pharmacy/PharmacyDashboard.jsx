@@ -67,8 +67,24 @@ export default function PharmacyDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Verification Warning */}
-      {profile && !profile.is_verified && (
+      {/* Rejection Warning */}
+      {user?.is_rejected && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-red-800">Verification Rejected</p>
+            <p className="text-sm text-red-700 mt-1">
+              Your pharmacy verification was rejected. Reason: {user.rejection_reason || 'No reason provided'}
+            </p>
+            <p className="text-sm text-red-600 mt-2">
+              Please contact support or re-submit your verification documents.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Verification Warning - only show if not rejected */}
+      {profile && !profile.is_verified && !user?.is_rejected && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>

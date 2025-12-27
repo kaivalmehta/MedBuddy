@@ -39,6 +39,15 @@ class User(AbstractUser):
     )
     verification_notes = models.TextField(blank=True)
     
+    # Verification rejection
+    is_rejected = models.BooleanField(default=False)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+    rejected_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rejected_users'
+    )
+    
     # Account Suspension
     is_suspended = models.BooleanField(default=False)
     suspended_at = models.DateTimeField(null=True, blank=True)

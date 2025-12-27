@@ -25,10 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'username', 'first_name', 'last_name', 'role', 
             'phone', 'preferred_language', 'is_email_verified', 'is_professional_verified',
             'is_fully_verified', 'can_send_to_patients', 'is_suspended',
+            'is_rejected', 'rejection_reason',
             'receive_email_notifications', 'created_at'
         ]
         read_only_fields = ['id', 'is_email_verified', 'is_professional_verified', 
-                           'is_suspended', 'created_at']
+                           'is_suspended', 'is_rejected', 'rejection_reason', 'created_at']
 
 
 class UserPublicSerializer(serializers.ModelSerializer):

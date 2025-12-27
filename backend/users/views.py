@@ -45,19 +45,43 @@ class InitiateRegistrationView(views.APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def post(self, request):
-        # Handle FormData - profile data might be JSON string
-        data = request.data.copy()
+        # Log incoming data for debugging
+        logger.info(f"Registration request - Content-Type: {request.content_type}")
+        logger.info(f"Registration request - FILES: {list(request.FILES.keys())}")
+        logger.info(f"Registration request - role: {request.data.get('role')}")
         
-        # Parse JSON fields if sent as strings (from FormData)
+        # Convert QueryDict to regular dict for proper manipulation
+        if hasattr(request.data, 'dict'):
+            data = request.data.dict()
+        else:
+            data = dict(request.data)
+        
+        # Parse JSON fields if sent as strings (from FormData) - MUST happen before serializer
         for field in ['doctor_profile', 'laboratory_profile', 'pharmacy_profile']:
-            if field in data and isinstance(data[field], str):
-                try:
-                    data[field] = json.loads(data[field])
-                except:
-                    pass
+            if field in data:
+                field_value = data[field]
+                logger.info(f"Field {field} value type: {type(field_value)}, value: {field_value[:100] if isinstance(field_value, str) else field_value}")
+                if isinstance(field_value, str):
+                    if field_value.strip():  # Not empty
+                        try:
+                            data[field] = json.loads(field_value)
+                            logger.info(f"Successfully parsed {field} from JSON string")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse {field}: {e}, value was: {field_value}")
+                            # Remove invalid field to avoid serializer error
+                            data.pop(field, None)
+                    else:
+                        # Empty string - remove the field
+                        data.pop(field, None)
+                elif field_value is None:
+                    data.pop(field, None)
+        
+        logger.info(f"Data after JSON parsing: {list(data.keys())}")
         
         serializer = InitiateRegistrationSerializer(data=data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=400)
         
         email = serializer.validated_data['email']
         role = serializer.validated_data.get('role', 'patient')
@@ -66,14 +90,18 @@ class InitiateRegistrationView(views.APIView):
         verification_doc_url = ''
         verification_file = request.FILES.get('verification_document')
         
+        logger.info(f"Registration - verification_file present: {verification_file is not None}")
+        
         if verification_file and role != 'patient':
             try:
+                logger.info(f"Uploading verification document for {email}, role: {role}")
                 azure_svc = AzureServices()
                 _, verification_doc_url = azure_svc.upload_verification_document(
                     verification_file, 
                     role, 
                     email.split('@')[0]
                 )
+                logger.info(f"Verification document uploaded: {verification_doc_url}")
             except Exception as e:
                 logger.error(f"Failed to upload verification document: {e}")
                 # Continue without the document - admin can request it later
@@ -92,6 +120,8 @@ class InitiateRegistrationView(views.APIView):
             'pharmacy_profile': serializer.validated_data.get('pharmacy_profile'),
             'verification_document_url': verification_doc_url,
         }
+        
+        logger.info(f"Registration data - verification_document_url: {verification_doc_url}")
         
         # Create pending registration
         pending = PendingRegistration.create_pending(email, registration_data)

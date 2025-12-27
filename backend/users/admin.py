@@ -5,8 +5,8 @@ from pharmacy.models import Pharmacy
 
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
-    list_display = ['email', 'username', 'role', 'is_verified', 'is_professional_verified', 'is_suspended', 'created_at']
-    list_filter = ['role', 'is_verified', 'is_professional_verified', 'is_active', 'is_suspended']
+    list_display = ['email', 'username', 'role', 'is_verified', 'is_professional_verified', 'is_rejected', 'is_suspended', 'created_at']
+    list_filter = ['role', 'is_verified', 'is_professional_verified', 'is_rejected', 'is_active', 'is_suspended']
     search_fields = ['email', 'username', 'first_name', 'last_name']
     ordering = ['-created_at']
     actions = ['verify_professionals', 'unverify_professionals']
@@ -16,11 +16,14 @@ class CustomUserAdmin(UserAdmin):
         ('Role & Verification', {
             'fields': ('role', 'phone', 'is_verified', 'is_email_verified', 'is_professional_verified')
         }),
+        ('Rejection', {
+            'fields': ('is_rejected', 'rejection_reason', 'rejected_at')
+        }),
         ('Suspension', {
             'fields': ('is_suspended', 'suspension_reason', 'suspended_at')
         }),
         ('Preferences', {
-            'fields': ('receive_email_notifications', 'receive_sms_notifications')
+            'fields': ('receive_email_notifications',)
         }),
     )
     
@@ -36,7 +39,9 @@ class CustomUserAdmin(UserAdmin):
         # Update user's is_professional_verified
         count = queryset.filter(role__in=['doctor', 'pharmacy', 'laboratory']).update(
             is_professional_verified=True,
-            is_verified=True
+            is_verified=True,
+            is_rejected=False,
+            rejection_reason=''
         )
         # Also update their profile is_verified
         for user in queryset.filter(role__in=['doctor', 'pharmacy', 'laboratory']):

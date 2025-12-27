@@ -81,6 +81,14 @@ api.interceptors.response.use(
 
 // Registration - Step 1: Initiate (sends OTP)
 export const initiateRegistration = (data) => {
+  // Check if data is FormData (for file uploads)
+  if (data instanceof FormData) {
+    return api.post('/auth/register/', data, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+  }
   return api.post('/auth/register/', data)
 }
 

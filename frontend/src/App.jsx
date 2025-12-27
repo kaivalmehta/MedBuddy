@@ -58,6 +58,11 @@ import LabProfile from './pages/laboratory/LabProfile'
 import LabTestOrders from './pages/laboratory/LabTestOrders'
 import LabHomeCollections from './pages/laboratory/LabHomeCollections'
 
+// Admin Pages
+import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminVerifications from './pages/admin/AdminVerifications'
+import AdminSuspensions from './pages/admin/AdminSuspensions'
+
 // Shared Pages
 import CriticalAlerts from './pages/shared/CriticalAlerts'
 
@@ -176,6 +181,13 @@ export default function App() {
         <Route path="/laboratory/profile" element={<LabProfile />} />
         <Route path="/laboratory/test-orders" element={<LabTestOrders />} />
         <Route path="/laboratory/collections" element={<LabHomeCollections />} />
+      </Route>
+      
+      {/* Admin Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['admin']}><MainLayout /></ProtectedRoute>}>
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin/verifications" element={<AdminVerifications />} />
+        <Route path="/admin/suspensions" element={<AdminSuspensions />} />
       </Route>
       
       {/* Root redirect */}

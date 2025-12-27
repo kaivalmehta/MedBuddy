@@ -63,12 +63,19 @@ const laboratoryNav = [
   { path: '/laboratory/profile', icon: FlaskConical, label: 'Lab Profile' },
 ]
 
+const adminNav = [
+  { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/admin/verifications', icon: UserSearch, label: 'Verification Requests' },
+  { path: '/admin/suspensions', icon: Users, label: 'Suspensions' },
+]
+
 // Get navigation based on user role
 const getNavItems = (role) => {
   switch (role) {
     case 'pharmacy': return pharmacyNav
     case 'doctor': return doctorNav
     case 'laboratory': return laboratoryNav
+    case 'admin': return adminNav
     default: return patientNav
   }
 }
@@ -79,7 +86,8 @@ const getRoleDisplay = (role) => {
     patient: 'Patient',
     pharmacy: 'Pharmacy',
     doctor: 'Doctor',
-    laboratory: 'Laboratory'
+    laboratory: 'Laboratory',
+    admin: 'Admin'
   }
   return displays[role] || 'User'
 }
@@ -90,7 +98,8 @@ const getRoleColor = (role) => {
     patient: 'from-primary-500 to-primary-600',
     pharmacy: 'from-emerald-500 to-emerald-600',
     doctor: 'from-blue-500 to-blue-600',
-    laboratory: 'from-purple-500 to-purple-600'
+    laboratory: 'from-purple-500 to-purple-600',
+    admin: 'from-red-500 to-red-600'
   }
   return colors[role] || 'from-primary-500 to-primary-600'
 }
