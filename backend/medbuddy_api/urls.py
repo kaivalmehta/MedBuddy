@@ -27,6 +27,11 @@ urlpatterns = [
     path('api/laboratory/', include('users.urls_laboratory')),
     
     # ============================================
+    # TEST ORDERS & LAB FEATURES
+    # ============================================
+    path('api/test-orders/', include('users.urls_test_orders')),
+    
+    # ============================================
     # PRESCRIPTION & REPORT APIs
     # ============================================
     path('api/prescriptions/', include('prescriptions.urls')),
@@ -48,3 +53,14 @@ urlpatterns = [
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]
+
+
+
+
+
+
+
+
+
+
+

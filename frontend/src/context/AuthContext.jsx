@@ -11,48 +11,30 @@ export const useAuth = () => {
 }
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const navigate = useNavigate()
-
-  // Initialize auth state from localStorage
-  useEffect(() => {
-    const initAuth = () => {
-      const token = localStorage.getItem('accessToken')
-      const userData = localStorage.getItem('user')
-      
-      console.log('[Auth] Initializing, token exists:', !!token, 'user exists:', !!userData)
-      
-      if (token && userData) {
-        try {
-          const parsedUser = JSON.parse(userData)
-          setUser(parsedUser)
-          // Ensure api has the token
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`
-          console.log('[Auth] User loaded:', parsedUser.email)
-        } catch (e) {
-          console.error('[Auth] Error parsing user data:', e)
-          localStorage.removeItem('user')
-          localStorage.removeItem('accessToken')
-          localStorage.removeItem('refreshToken')
-        }
+  const [user, setUser] = useState(() => {
+    // Initialize from localStorage synchronously to avoid flash
+    const userData = localStorage.getItem('user')
+    const token = localStorage.getItem('accessToken')
+    if (token && userData) {
+      try {
+        const parsed = JSON.parse(userData)
+        // Set axios header immediately
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+        console.log('[Auth] Initial user from localStorage:', parsed.email)
+        return parsed
+      } catch (e) {
+        console.error('[Auth] Error parsing stored user:', e)
+        return null
       }
-      
-      // Clear the login transition flag after a short delay
-      // This gives the Dashboard time to make initial requests
-      setTimeout(() => {
-        sessionStorage.removeItem('justLoggedIn')
-      }, 2000)
-      
-      setLoading(false)
     }
-    
-    initAuth()
-  }, [])
+    return null
+  })
+  const [loading, setLoading] = useState(false) // Start as false since we init from localStorage
+  const navigate = useNavigate()
 
   // Set auth state (called after OTP verification)
   const setAuth = ({ user: userData, accessToken, refreshToken }) => {
-    console.log('[Auth] Setting auth for:', userData.email)
+    console.log('[Auth] setAuth called for:', userData.email)
     localStorage.setItem('accessToken', accessToken)
     localStorage.setItem('refreshToken', refreshToken)
     localStorage.setItem('user', JSON.stringify(userData))
@@ -63,6 +45,7 @@ export const AuthProvider = ({ children }) => {
 
   // Logout
   const logout = async () => {
+    console.log('[Auth] Logout called')
     try {
       const refreshToken = localStorage.getItem('refreshToken')
       if (refreshToken) {
@@ -115,14 +98,10 @@ export const AuthProvider = ({ children }) => {
     return paths[user.role] || '/dashboard'
   }
 
-  // Show loading spinner while initializing
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary-500 border-t-transparent"></div>
-      </div>
-    )
-  }
+  // Log when user changes
+  useEffect(() => {
+    console.log('[Auth] User state changed:', user ? user.email : 'null')
+  }, [user])
 
   return (
     <AuthContext.Provider value={{ 

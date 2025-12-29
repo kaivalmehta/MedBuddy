@@ -24,13 +24,16 @@ import FindPharmacy from './pages/patient/FindPharmacy'
 import MyOrders from './pages/patient/MyOrders'
 import LabReports from './pages/patient/LabReports'
 import LabReportDetail from './pages/patient/LabReportDetail'
+import PatientTestOrders from './pages/patient/PatientTestOrders'
+import PatientOrderTest from './pages/patient/PatientOrderTest'
 
 // Pharmacy Pages
 import PharmacyDashboard from './pages/pharmacy/PharmacyDashboard'
 import PharmacyScanSend from './pages/pharmacy/PharmacyScanSend'
 import PharmacySentHistory from './pages/pharmacy/PharmacySentHistory'
-import OrderQueue from './pages/pharmacy/OrderQueue'
-import OrderDetail from './pages/pharmacy/OrderDetail'
+import PharmacyPatientAccess from './pages/pharmacy/PharmacyPatientAccess'
+import PharmacyPatientHistory from './pages/pharmacy/PharmacyPatientHistory'
+import SalesDashboard from './pages/pharmacy/SalesDashboard'
 import Inventory from './pages/pharmacy/Inventory'
 
 // Doctor Pages
@@ -41,12 +44,27 @@ import DoctorUpload from './pages/doctor/DoctorUpload'
 import DoctorHistory from './pages/doctor/DoctorHistory'
 import DoctorProfile from './pages/doctor/DoctorProfile'
 import PatientHistory from './pages/doctor/PatientHistory'
+import DoctorOrderTest from './pages/doctor/DoctorOrderTest'
+import DoctorTestOrders from './pages/doctor/DoctorTestOrders'
 
 // Laboratory Pages
 import LabDashboard from './pages/laboratory/LabDashboard'
+import LabPatientAccess from './pages/laboratory/LabPatientAccess'
+import LabPatientHistory from './pages/laboratory/LabPatientHistory'
 import LabUploadReport from './pages/laboratory/LabUploadReport'
 import LabSentHistory from './pages/laboratory/LabSentHistory'
+import LabReportDetailPage from './pages/laboratory/LabReportDetail'
 import LabProfile from './pages/laboratory/LabProfile'
+import LabTestOrders from './pages/laboratory/LabTestOrders'
+import LabHomeCollections from './pages/laboratory/LabHomeCollections'
+
+// Admin Pages
+import AdminDashboard from './pages/admin/AdminDashboard'
+import AdminVerifications from './pages/admin/AdminVerifications'
+import AdminSuspensions from './pages/admin/AdminSuspensions'
+
+// Shared Pages
+import CriticalAlerts from './pages/shared/CriticalAlerts'
 
 // Loading component
 const LoadingScreen = () => (
@@ -122,15 +140,19 @@ export default function App() {
         <Route path="/reminders" element={<Reminders />} />
         <Route path="/pharmacies" element={<FindPharmacy />} />
         <Route path="/orders" element={<MyOrders />} />
+        <Route path="/lab-orders" element={<PatientTestOrders />} />
+        <Route path="/order-test" element={<PatientOrderTest />} />
+        <Route path="/alerts" element={<CriticalAlerts userRole="patient" />} />
       </Route>
       
       {/* Pharmacy Routes */}
       <Route element={<ProtectedRoute allowedRoles={['pharmacy']}><MainLayout /></ProtectedRoute>}>
         <Route path="/pharmacy" element={<PharmacyDashboard />} />
+        <Route path="/pharmacy/patient-access" element={<PharmacyPatientAccess />} />
+        <Route path="/pharmacy/patient/:patientId" element={<PharmacyPatientHistory />} />
         <Route path="/pharmacy/scan" element={<PharmacyScanSend />} />
         <Route path="/pharmacy/sent" element={<PharmacySentHistory />} />
-        <Route path="/pharmacy/orders" element={<OrderQueue />} />
-        <Route path="/pharmacy/orders/:id" element={<OrderDetail />} />
+        <Route path="/pharmacy/sales" element={<SalesDashboard />} />
         <Route path="/pharmacy/inventory" element={<Inventory />} />
       </Route>
       
@@ -143,14 +165,29 @@ export default function App() {
         <Route path="/doctor/upload" element={<DoctorUpload />} />
         <Route path="/doctor/history" element={<DoctorHistory />} />
         <Route path="/doctor/profile" element={<DoctorProfile />} />
+        <Route path="/doctor/order-test" element={<DoctorOrderTest />} />
+        <Route path="/doctor/test-orders" element={<DoctorTestOrders />} />
+        <Route path="/doctor/alerts" element={<CriticalAlerts userRole="doctor" />} />
       </Route>
       
       {/* Laboratory Routes */}
       <Route element={<ProtectedRoute allowedRoles={['laboratory']}><MainLayout /></ProtectedRoute>}>
         <Route path="/laboratory" element={<LabDashboard />} />
+        <Route path="/laboratory/patient-access" element={<LabPatientAccess />} />
+        <Route path="/laboratory/patient/:patientId" element={<LabPatientHistory />} />
         <Route path="/laboratory/upload" element={<LabUploadReport />} />
         <Route path="/laboratory/sent" element={<LabSentHistory />} />
+        <Route path="/laboratory/report/:id" element={<LabReportDetailPage />} />
         <Route path="/laboratory/profile" element={<LabProfile />} />
+        <Route path="/laboratory/test-orders" element={<LabTestOrders />} />
+        <Route path="/laboratory/collections" element={<LabHomeCollections />} />
+      </Route>
+      
+      {/* Admin Routes */}
+      <Route element={<ProtectedRoute allowedRoles={['admin']}><MainLayout /></ProtectedRoute>}>
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/admin/verifications" element={<AdminVerifications />} />
+        <Route path="/admin/suspensions" element={<AdminSuspensions />} />
       </Route>
       
       {/* Root redirect */}

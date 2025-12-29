@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale
 from prescriptions.serializers import PrescriptionDetailSerializer
 
 
@@ -47,10 +47,30 @@ class OrderStatusUpdateSerializer(serializers.Serializer):
 
 
 class PharmacyInventorySerializer(serializers.ModelSerializer):
+    is_low_stock = serializers.ReadOnlyField()
+    is_expired = serializers.ReadOnlyField()
+    is_expiring_soon = serializers.ReadOnlyField()
+    stock_status = serializers.ReadOnlyField()
+    profit_margin = serializers.ReadOnlyField()
+    
     class Meta:
         model = PharmacyInventory
-        fields = ['id', 'drug_name', 'generic_name', 'manufacturer', 'quantity_in_stock', 'unit_price', 'is_available', 'last_restocked', 'updated_at']
-        read_only_fields = ['id', 'updated_at']
+        fields = [
+            'id', 'drug_name', 'generic_name', 'manufacturer', 'category',
+            'strength', 'dosage_form', 'quantity_in_stock', 'unit_price', 
+            'cost_price', 'is_available', 'sku', 'batch_number', 'expiry_date',
+            'reorder_level', 'max_stock_level', 'supplier_name', 'supplier_contact',
+            'requires_prescription', 'is_controlled_substance', 'storage_instructions',
+            'last_restocked', 'created_at', 'updated_at',
+            # Computed fields
+            'is_low_stock', 'is_expired', 'is_expiring_soon', 'stock_status', 'profit_margin'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_low_stock', 'is_expired', 'is_expiring_soon', 'stock_status', 'profit_margin']
+
+
+class InventoryBulkCreateSerializer(serializers.Serializer):
+    """For CSV/bulk import"""
+    items = PharmacyInventorySerializer(many=True)
 
 
 class PharmacyReviewSerializer(serializers.ModelSerializer):
@@ -78,3 +98,28 @@ class ChatMessageSerializer(serializers.ModelSerializer):
         if obj.sender.role == 'pharmacy':
             return obj.sender.pharmacy_profile.name
         return f"{obj.sender.first_name} {obj.sender.last_name}".strip()
+
+
+class PharmacySaleSerializer(serializers.ModelSerializer):
+    inventory_item_name = serializers.CharField(source='inventory_item.drug_name', read_only=True)
+    
+    class Meta:
+        model = PharmacySale
+        fields = [
+            'id', 'inventory_item', 'inventory_item_name', 'prescription',
+            'drug_name', 'generic_name', 'quantity', 'unit_price', 
+            'total_price', 'cost_price', 'profit', 'sale_type',
+            'customer_name', 'customer_phone', 'notes', 'created_at'
+        ]
+        read_only_fields = ['id', 'total_price', 'profit', 'created_at']
+
+
+class DispenseItemSerializer(serializers.Serializer):
+    """For dispensing/selling inventory items"""
+    inventory_item_id = serializers.UUIDField()
+    quantity = serializers.IntegerField(min_value=1)
+    sale_type = serializers.ChoiceField(choices=['prescription', 'otc', 'return'], default='otc')
+    customer_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
+    customer_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
+    prescription_id = serializers.UUIDField(required=False, allow_null=True)
+    notes = serializers.CharField(required=False, allow_blank=True)

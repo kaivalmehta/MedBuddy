@@ -17,6 +17,8 @@ urlpatterns = [
     path('patient/check/', views.PharmacyCheckPatientView.as_view(), name='pharmacy_check_patient'),
     path('patient/request-access/', views.PharmacyRequestPatientAccessView.as_view(), name='pharmacy_request_access'),
     path('patient/verify-otp/', views.PharmacyVerifyPatientOTPView.as_view(), name='pharmacy_verify_otp'),
+    path('patient/sessions/', views.PharmacyActiveSessionsView.as_view(), name='pharmacy_active_sessions'),
+    path('patient/<uuid:patient_id>/history/', views.PharmacyPatientHistoryView.as_view(), name='pharmacy_patient_history'),
     
     # ============================================
     # PRESCRIPTION MANAGEMENT
@@ -38,7 +40,17 @@ urlpatterns = [
     # INVENTORY
     # ============================================
     path('inventory/', views.InventoryListView.as_view(), name='pharmacy_inventory'),
+    path('inventory/alerts/', views.InventoryAlertsView.as_view(), name='inventory_alerts'),
+    path('inventory/bulk-update/', views.InventoryBulkUpdateView.as_view(), name='inventory_bulk_update'),
     path('inventory/<uuid:pk>/', views.InventoryDetailView.as_view(), name='inventory_detail'),
+    path('inventory/<uuid:pk>/restock/', views.InventoryRestockView.as_view(), name='inventory_restock'),
+    
+    # ============================================
+    # SALES / DISPENSE
+    # ============================================
+    path('sales/dispense/', views.DispenseItemView.as_view(), name='dispense_item'),
+    path('sales/history/', views.SalesHistoryView.as_view(), name='sales_history'),
+    path('sales/dashboard/', views.SalesDashboardView.as_view(), name='sales_dashboard'),
     
     # ============================================
     # PUBLIC (For patients finding pharmacies)

@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { getPharmacyDashboard, getPharmacyProfile } from '../../services/professional'
+import { pharmacyService } from '../../services/pharmacy'
 import { 
-  Scan, Package, History, Pill, 
-  ShoppingBag, TrendingUp, Clock, AlertCircle, CheckCircle
+  Scan, Package, History, Pill, UserSearch,
+  TrendingUp, Clock, AlertCircle, CheckCircle
 } from 'lucide-react'
 
 export default function PharmacyDashboard() {
@@ -23,8 +23,8 @@ export default function PharmacyDashboard() {
   const loadData = async () => {
     try {
       const [profileRes, dashboardRes] = await Promise.all([
-        getPharmacyProfile(),
-        getPharmacyDashboard()
+        pharmacyService.getProfile(),
+        pharmacyService.getDashboard()
       ])
       setProfile(profileRes.data)
       setStats(dashboardRes.data)
@@ -36,11 +36,25 @@ export default function PharmacyDashboard() {
     }
   }
 
+  const displayValue = (value) => {
+    if (value === null || value === undefined) return 'Not set'
+    if (typeof value === 'object') {
+      if (Array.isArray(value)) {
+        return value.length > 0 ? value.join(', ') : 'Not set'
+      }
+      const entries = Object.entries(value)
+      if (entries.length === 0) return 'Not set'
+      return entries.map(([k, v]) => `${k}: ${v}`).join(' | ')
+    }
+    return value || 'Not set'
+  }
+
   const quickActions = [
+    { title: 'Access Patient', desc: 'View patient history', icon: UserSearch, path: '/pharmacy/patient-access', color: 'bg-blue-500' },
     { title: 'Scan & Send', desc: 'Scan prescription for patient', icon: Scan, path: '/pharmacy/scan', color: 'bg-emerald-500' },
-    { title: 'Order Queue', desc: 'Manage incoming orders', icon: ShoppingBag, path: '/pharmacy/orders', color: 'bg-blue-500' },
     { title: 'Sent History', desc: 'View sent prescriptions', icon: History, path: '/pharmacy/sent', color: 'bg-purple-500' },
-    { title: 'Inventory', desc: 'Manage stock levels', icon: Package, path: '/pharmacy/inventory', color: 'bg-amber-500' },
+    { title: 'Sales Dashboard', desc: 'Track sales & revenue', icon: TrendingUp, path: '/pharmacy/sales', color: 'bg-amber-500' },
+    { title: 'Inventory', desc: 'Manage stock levels', icon: Package, path: '/pharmacy/inventory', color: 'bg-rose-500' },
   ]
 
   if (loading) {
@@ -53,8 +67,24 @@ export default function PharmacyDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Verification Warning */}
-      {profile && !profile.is_verified && (
+      {/* Rejection Warning */}
+      {user?.is_rejected && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-red-800">Verification Rejected</p>
+            <p className="text-sm text-red-700 mt-1">
+              Your pharmacy verification was rejected. Reason: {user.rejection_reason || 'No reason provided'}
+            </p>
+            <p className="text-sm text-red-600 mt-2">
+              Please contact support or re-submit your verification documents.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Verification Warning - only show if not rejected */}
+      {profile && !profile.is_verified && !user?.is_rejected && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
           <div>
@@ -74,32 +104,32 @@ export default function PharmacyDashboard() {
           </div>
           <div>
             <h1 className="text-2xl font-display font-bold">
-              Welcome, {profile?.pharmacy_name || user?.first_name || 'Pharmacy'}
+              Welcome, {profile?.name || profile?.pharmacy_name || user?.first_name || 'Pharmacy'}
             </h1>
             <p className="text-emerald-100 mt-1">
-              {profile?.address || 'Manage prescriptions and orders'}
+              {typeof profile?.address === 'string' ? profile.address : 'Manage prescriptions and patient care'}
             </p>
           </div>
         </div>
         
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
             <div className="bg-white/10 rounded-xl p-4 text-center">
               <p className="text-3xl font-bold">{stats.total_prescriptions || 0}</p>
               <p className="text-emerald-100 text-sm">Prescriptions Sent</p>
             </div>
             <div className="bg-white/10 rounded-xl p-4 text-center">
-              <p className="text-3xl font-bold">{stats.pending_orders || 0}</p>
-              <p className="text-emerald-100 text-sm">Pending Orders</p>
+              <p className="text-3xl font-bold">{stats.patients_served || 0}</p>
+              <p className="text-emerald-100 text-sm">Patients Served</p>
             </div>
             <div className="bg-white/10 rounded-xl p-4 text-center">
-              <p className="text-3xl font-bold">{stats.completed_orders || 0}</p>
-              <p className="text-emerald-100 text-sm">Completed Orders</p>
+              <p className="text-3xl font-bold">{stats.today_sales || 0}</p>
+              <p className="text-emerald-100 text-sm">Sales Today</p>
             </div>
             <div className="bg-white/10 rounded-xl p-4 text-center">
-              <p className="text-3xl font-bold">{stats.this_month || 0}</p>
-              <p className="text-emerald-100 text-sm">This Month</p>
+              <p className="text-3xl font-bold">{stats.low_stock_items || 0}</p>
+              <p className="text-emerald-100 text-sm">Low Stock Alerts</p>
             </div>
           </div>
         )}
@@ -108,7 +138,7 @@ export default function PharmacyDashboard() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-lg font-semibold text-secondary-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {quickActions.map((action) => (
             <Link
               key={action.path}
@@ -134,15 +164,15 @@ export default function PharmacyDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-secondary-500">License Number</p>
-              <p className="font-medium text-secondary-800">{profile.license_number || 'Not set'}</p>
+              <p className="font-medium text-secondary-800">{displayValue(profile.license_number)}</p>
             </div>
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-secondary-500">Phone</p>
-              <p className="font-medium text-secondary-800">{profile.phone || 'Not set'}</p>
+              <p className="font-medium text-secondary-800">{displayValue(profile.phone)}</p>
             </div>
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-secondary-500">Operating Hours</p>
-              <p className="font-medium text-secondary-800">{profile.operating_hours || 'Not set'}</p>
+              <p className="font-medium text-secondary-800 text-sm">{displayValue(profile.operating_hours)}</p>
             </div>
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-sm text-secondary-500">Verification Status</p>
@@ -160,44 +190,6 @@ export default function PharmacyDashboard() {
                 )}
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Recent Orders */}
-      {stats?.recent_orders && stats.recent_orders.length > 0 && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-secondary-800">Recent Orders</h2>
-            <Link to="/pharmacy/orders" className="text-sm text-emerald-600 hover:text-emerald-700">
-              View All →
-            </Link>
-          </div>
-          <div className="space-y-3">
-            {stats.recent_orders.map((order, index) => (
-              <Link 
-                key={index} 
-                to={`/pharmacy/orders/${order.id}`}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                    <ShoppingBag className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-secondary-800">{order.patient_name || order.patient_email}</p>
-                    <p className="text-sm text-secondary-500">{new Date(order.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <span className={`text-xs px-2 py-1 rounded-full ${
-                  order.status === 'completed' ? 'bg-green-100 text-green-700' :
-                  order.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                  'bg-gray-100 text-gray-600'
-                }`}>
-                  {order.status || 'Pending'}
-                </span>
-              </Link>
-            ))}
           </div>
         </div>
       )}

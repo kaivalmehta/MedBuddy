@@ -25,10 +25,11 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'username', 'first_name', 'last_name', 'role', 
             'phone', 'preferred_language', 'is_email_verified', 'is_professional_verified',
             'is_fully_verified', 'can_send_to_patients', 'is_suspended',
+            'is_rejected', 'rejection_reason',
             'receive_email_notifications', 'created_at'
         ]
         read_only_fields = ['id', 'is_email_verified', 'is_professional_verified', 
-                           'is_suspended', 'created_at']
+                           'is_suspended', 'is_rejected', 'rejection_reason', 'created_at']
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
@@ -217,6 +218,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
 
 class DoctorProfileSerializer(serializers.ModelSerializer):
     user = UserPublicSerializer(read_only=True)
+    is_verified = serializers.SerializerMethodField()
     
     class Meta:
         model = DoctorProfile
@@ -226,19 +228,28 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
             'clinic_phone', 'is_verified', 'created_at'
         ]
         read_only_fields = ['id', 'is_verified', 'created_at']
+    
+    def get_is_verified(self, obj):
+        # Check both profile verification AND user's professional verification
+        return obj.is_verified and obj.user.is_professional_verified
 
 
 class LaboratoryProfileSerializer(serializers.ModelSerializer):
     user = UserPublicSerializer(read_only=True)
+    is_verified = serializers.SerializerMethodField()
     
     class Meta:
         model = LaboratoryProfile
         fields = [
             'id', 'user', 'name', 'license_number', 'address', 'city',
             'state', 'zip_code', 'phone', 'services', 'is_verified',
-            'operating_hours', 'created_at'
+            'home_collection_available', 'operating_hours', 'created_at'
         ]
         read_only_fields = ['id', 'is_verified', 'created_at']
+    
+    def get_is_verified(self, obj):
+        # Check both profile verification AND user's professional verification
+        return obj.is_verified and obj.user.is_professional_verified
 
 
 # ============================================

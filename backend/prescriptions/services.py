@@ -59,6 +59,58 @@ class AzureServices:
         )
         return blob_name, blob_client.url
     
+    def upload_verification_document(self, file, role, identifier):
+        """Upload verification document (license PDF) for professionals."""
+        ext = file.name.split('.')[-1].lower()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        blob_name = f"verification/{role}/{identifier}_{timestamp}.{ext}"
+        
+        container_client = self.blob_service.get_container_client(self.container_name)
+        try:
+            container_client.create_container()
+        except Exception:
+            pass
+        
+        content_type_map = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'pdf': 'application/pdf'
+        }
+        content_type = content_type_map.get(ext, 'application/octet-stream')
+        
+        blob_client = container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(
+            file.read(),
+            content_settings=ContentSettings(content_type=content_type),
+            overwrite=True
+        )
+        return blob_name, blob_client.url
+    
+    def upload_lab_report(self, file_data, filename):
+        """Upload lab report to Azure Blob Storage."""
+        ext = filename.split('.')[-1].lower()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        blob_name = f"lab-reports/{timestamp}_{uuid.uuid4().hex[:8]}_{filename}"
+        
+        container_client = self.blob_service.get_container_client(self.container_name)
+        try:
+            container_client.create_container()
+        except Exception:
+            pass
+        
+        content_type_map = {
+            'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+            'png': 'image/png', 'pdf': 'application/pdf'
+        }
+        content_type = content_type_map.get(ext, 'application/octet-stream')
+        
+        blob_client = container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(
+            file_data,
+            content_settings=ContentSettings(content_type=content_type),
+            overwrite=True
+        )
+        return blob_name, blob_client.url
+    
     def extract_text(self, image_url):
         """Extract text using Azure Computer Vision Read API."""
         analyze_url = f"{self.vision_endpoint.rstrip('/')}/vision/v3.2/read/analyze"
@@ -101,8 +153,68 @@ class AzureServices:
         except Exception as e:
             logger.error(f"OCR Error: {e}")
             return {'text': '', 'confidence': 0.0}
+    
+    def perform_ocr(self, file_data):
+        """Perform OCR on file data (image bytes). Alias for extract_text but accepts bytes."""
+        # Upload temp file and get URL, or process directly
+        try:
+            # For direct byte processing, we need to use a different endpoint
+            analyze_url = f"{self.vision_endpoint.rstrip('/')}/vision/v3.2/read/analyze"
+            headers = {
+                'Ocp-Apim-Subscription-Key': self.vision_key,
+                'Content-Type': 'application/octet-stream'
+            }
+            
+            response = requests.post(analyze_url, headers=headers, data=file_data)
+            response.raise_for_status()
+            operation_url = response.headers.get('Operation-Location')
+            
+            if not operation_url:
+                return {'text': '', 'confidence': 0.0}
+            
+            for _ in range(15):
+                time.sleep(1)
+                result = requests.get(operation_url, headers={
+                    'Ocp-Apim-Subscription-Key': self.vision_key
+                }).json()
+                
+                if result.get('status') == 'succeeded':
+                    break
+                elif result.get('status') == 'failed':
+                    return {'text': '', 'confidence': 0.0}
+            
+            all_text, confidences = [], []
+            for page in result.get('analyzeResult', {}).get('readResults', []):
+                for line in page.get('lines', []):
+                    all_text.append(line.get('text', ''))
+                    for word in line.get('words', []):
+                        if word.get('confidence'):
+                            confidences.append(word['confidence'])
+            
+            return {
+                'text': '\n'.join(all_text),
+                'confidence': round(sum(confidences) / len(confidences), 4) if confidences else 0.0
+            }
+        except Exception as e:
+            logger.error(f"OCR Error: {e}")
+            return {'text': '', 'confidence': 0.0}
 
-    # ADD this method to your AzureServices class in prescriptions/services.py
+    def chat_completion(self, messages, temperature=0.1, max_tokens=3000):
+        """Generic chat completion method for Azure OpenAI"""
+        try:
+            response = self.openai_client.chat.completions.create(
+                model=self.deployment,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+            return {
+                'content': response.choices[0].message.content,
+                'finish_reason': response.choices[0].finish_reason
+            }
+        except Exception as e:
+            logger.error(f"Chat completion error: {e}")
+            return {'content': '[]', 'error': str(e)}
 
     def analyze_lab_report(self, ocr_text, report_type='other'):
         """
@@ -116,54 +228,55 @@ class AzureServices:
                 'recommendations': []
             }
         
-        system_prompt = """You are a medical lab report analyzer. Analyze the lab report and extract structured information.
+        system_prompt = """You are a medical lab report analyzer. Your job is to carefully analyze lab reports and identify ALL abnormal values.
 
-Return a JSON object with this structure:
+IMPORTANT: You MUST identify any value that falls outside the normal/reference range. Look for:
+- Values marked as "LOW", "HIGH", "ABNORMAL", "L", "H", "*", or any flag
+- Values outside the reference/normal range shown
+- Any concerning findings mentioned in impressions or comments
+
+Return a JSON object with this EXACT structure:
 {
     "parsed_data": {
-        "patient_name": "if found",
-        "test_date": "YYYY-MM-DD if found",
-        "laboratory": "lab name if found",
-        "referring_doctor": "if found",
+        "patient_name": "extracted name or null",
+        "test_date": "YYYY-MM-DD or null",
         "tests": [
             {
                 "test_name": "Test name",
                 "result": "Value with unit",
                 "reference_range": "Normal range",
                 "status": "normal|low|high|critical",
-                "interpretation": "What this result means"
+                "flag": "any flag shown like LOW, HIGH, etc"
             }
         ]
     },
-    "summary": "Brief 2-3 sentence summary of the overall report findings in plain language",
+    "summary": "Brief 2-3 sentence summary of findings. Mention if there are abnormal values.",
     "abnormal_values": [
         {
-            "test_name": "Name of abnormal test",
-            "result": "Actual value",
-            "expected": "Normal range",
+            "test_name": "EXACT test name",
+            "result": "The actual measured value with unit",
+            "expected": "The normal/reference range",
             "severity": "mild|moderate|significant",
-            "meaning": "What this abnormality might indicate"
+            "meaning": "Brief explanation of what this abnormality might indicate"
         }
     ],
     "recommendations": [
-        "Recommendation 1 in plain language",
-        "Recommendation 2"
-    ],
-    "urgent_findings": ["Any findings requiring immediate attention"]
+        "Specific recommendation based on findings"
+    ]
 }
 
-Guidelines:
-- Write in patient-friendly language
-- Highlight abnormal values clearly
-- Don't alarm unnecessarily but be clear about significant findings
-- Recommend follow-up if appropriate
-- If values look normal, say so reassuringly"""
+CRITICAL RULES:
+1. If a value is flagged as LOW, HIGH, ABNORMAL, or is outside reference range, it MUST be in abnormal_values
+2. Include the actual numeric result and the expected range
+3. For CBC reports: Check Hemoglobin, RBC, WBC, Platelets, etc against their ranges
+4. Never return empty abnormal_values if there are clearly flagged abnormal results
+5. severity should be "significant" if value is very far from normal range"""
 
-        user_prompt = f"""Analyze this {report_type} lab report and provide structured analysis:
+        user_prompt = f"""Analyze this lab report carefully and identify ALL abnormal values:
 
 {ocr_text}
 
-Extract all test values, identify abnormal results, and provide patient-friendly explanations."""
+Remember: Any value marked LOW, HIGH, or outside reference range MUST be included in abnormal_values array."""
 
         try:
             response = self.openai_client.chat.completions.create(
@@ -174,7 +287,7 @@ Extract all test values, identify abnormal results, and provide patient-friendly
                 ],
                 temperature=0.1,
                 response_format={"type": "json_object"},
-                max_tokens=3000
+                max_tokens=4000
             )
             
             result = json.loads(response.choices[0].message.content)
@@ -185,10 +298,17 @@ Extract all test values, identify abnormal results, and provide patient-friendly
             result.setdefault('abnormal_values', [])
             result.setdefault('recommendations', [])
             
+            # Log what we found for debugging
+            logger.info(f"Lab report analysis found {len(result.get('abnormal_values', []))} abnormal values")
+            if result.get('abnormal_values'):
+                logger.info(f"Abnormal values: {result['abnormal_values']}")
+            
             return result
             
         except Exception as e:
             logger.error(f"Lab Report Analysis Error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {
                 'parsed_data': {},
                 'summary': 'Unable to analyze report. Please consult your doctor.',

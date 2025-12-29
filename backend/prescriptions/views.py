@@ -391,3 +391,451 @@ class PrescriptionHistoryView(generics.ListAPIView):
             qs = qs.filter(created_at__lte=end_date)
         
         return qs.order_by('-created_at')
+
+
+# ============================================
+# LAB REPORTS - PATIENT VIEWS
+# ============================================
+
+class PatientLabReportsView(views.APIView):
+    """Get all lab reports for the authenticated patient"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LabReport
+        
+        # Get query params for filtering
+        report_type = request.query_params.get('type')
+        search = request.query_params.get('search', '').strip()
+        
+        reports = LabReport.objects.filter(user=request.user)
+        
+        if report_type:
+            reports = reports.filter(report_type=report_type)
+        if search:
+            reports = reports.filter(report_title__icontains=search)
+        
+        reports = reports.order_by('-created_at')
+        
+        reports_data = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'report_type_display': r.get_report_type_display() if hasattr(r, 'get_report_type_display') else r.report_type,
+            'report_date': r.report_date.isoformat() if r.report_date else None,
+            'laboratory_name': r.laboratory_name,
+            'referring_doctor': r.referring_doctor,
+            'file_url': r.file_url,
+            'status': r.status,
+            'source': r.source,
+            'has_critical_values': r.has_critical_values,
+            'analysis_summary': r.analysis_summary,
+            'abnormal_values': r.abnormal_values or [],
+            'created_at': r.created_at.isoformat(),
+        } for r in reports]
+        
+        return Response({'reports': reports_data})
+
+
+class PatientLabReportDetailView(views.APIView):
+    """Get detail of a specific lab report for patient"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, report_id):
+        from .models import LabReport, CriticalValueAlert
+        
+        try:
+            report = LabReport.objects.get(id=report_id, user=request.user)
+        except LabReport.DoesNotExist:
+            return Response({'error': 'Report not found'}, status=404)
+        
+        # Get associated critical value alerts
+        alerts = CriticalValueAlert.objects.filter(lab_report=report)
+        
+        # Build abnormal_values - prefer CriticalValueAlert records if they exist
+        if alerts.exists():
+            abnormal_values = [{
+                'test_name': a.test_name,
+                'severity': a.severity,
+                'result': a.measured_value,
+                'expected': a.normal_range,
+                'meaning': a.description,
+                'unit': a.unit,
+                'recommendation': a.recommendation,
+            } for a in alerts]
+            recommendations = list(set([a.recommendation for a in alerts if a.recommendation]))
+        elif report.abnormal_values:
+            # Fallback to report.abnormal_values for legacy data
+            # Check if it's list of strings or list of dicts
+            if report.abnormal_values and isinstance(report.abnormal_values[0], dict):
+                abnormal_values = [{
+                    'test_name': av.get('test_name', 'Unknown'),
+                    'severity': av.get('severity', 'abnormal'),
+                    'result': av.get('result', av.get('measured_value', '')),
+                    'expected': av.get('expected', av.get('normal_range', '')),
+                    'meaning': av.get('meaning', av.get('description', '')),
+                    'unit': av.get('unit', ''),
+                    'recommendation': av.get('recommendation', ''),
+                } for av in report.abnormal_values]
+            else:
+                # List of just test names
+                abnormal_values = [{
+                    'test_name': name,
+                    'severity': 'abnormal',
+                    'result': '',
+                    'expected': '',
+                    'meaning': '',
+                    'unit': '',
+                    'recommendation': '',
+                } for name in report.abnormal_values if name]
+            recommendations = report.recommendations or []
+        else:
+            abnormal_values = []
+            recommendations = report.recommendations or []
+        
+        # Build analysis summary if not present
+        analysis_summary = report.analysis_summary
+        if not analysis_summary and abnormal_values:
+            if report.has_critical_values:
+                analysis_summary = f"This report contains {len(abnormal_values)} abnormal value(s) that require attention. Please review the findings below and consult your healthcare provider."
+            else:
+                analysis_summary = f"This report has been analyzed. {len(abnormal_values)} value(s) were flagged for your review."
+        elif not analysis_summary:
+            analysis_summary = "No abnormal values were detected in this report."
+        
+        # Get test order info if available
+        test_order_info = None
+        if report.test_order:
+            order = report.test_order
+            test_order_info = {
+                'order_number': order.order_number,
+                'doctor_name': f"Dr. {order.doctor.get_full_name()}" if order.doctor and order.doctor.get_full_name() else (order.doctor.email if order.doctor else None),
+                'tests_requested': order.tests_requested,
+            }
+        
+        # Determine status - if we have abnormal_values, consider it analyzed
+        status = report.status
+        if (alerts.exists() or abnormal_values) and status != 'analyzed':
+            status = 'analyzed'
+        
+        return Response({
+            'id': str(report.id),
+            'report_title': report.report_title,
+            'report_type': report.report_type,
+            'report_type_display': report.get_report_type_display() if hasattr(report, 'get_report_type_display') else report.report_type,
+            'report_date': report.report_date.isoformat() if report.report_date else None,
+            'laboratory_name': report.laboratory_name,
+            'referring_doctor': report.referring_doctor,
+            'file_url': report.file_url,
+            'file_type': report.file_type,
+            'status': status,
+            'source': report.source,
+            'has_critical_values': report.has_critical_values,
+            'analysis_summary': analysis_summary,
+            'abnormal_values': abnormal_values,
+            'recommendations': recommendations,
+            'parsed_data': report.parsed_data or {},
+            'notes': report.notes,
+            'critical_alerts': abnormal_values,  # Same data, for backwards compatibility
+            'test_order': test_order_info,
+            'created_at': report.created_at.isoformat(),
+        })
+
+
+class PatientDashboardView(views.APIView):
+    """Dashboard stats for patient"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        from .models import LabReport, TestOrder, CriticalValueAlert
+        from datetime import timedelta
+        
+        user = request.user
+        today = timezone.now().date()
+        
+        # Prescription stats
+        total_prescriptions = Prescription.objects.filter(user=user).count()
+        active_prescriptions = Prescription.objects.filter(
+            user=user, 
+            status='active'
+        ).count()
+        
+        # Reminder stats
+        reminders_today = MedicationReminder.objects.filter(
+            user=user,
+            is_active=True,
+            next_reminder_at__date=today
+        ).count()
+        
+        pending_reminders = MedicationReminder.objects.filter(
+            user=user,
+            is_active=True,
+            next_reminder_at__lte=timezone.now()
+        ).count()
+        
+        # Lab report stats
+        total_lab_reports = LabReport.objects.filter(user=user).count()
+        recent_lab_reports = LabReport.objects.filter(
+            user=user,
+            created_at__gte=timezone.now() - timedelta(days=30)
+        ).count()
+        
+        # Critical alerts (unacknowledged)
+        critical_alerts = CriticalValueAlert.objects.filter(
+            patient=user,
+            acknowledged_by_patient=False
+        ).count()
+        
+        # Test orders
+        pending_test_orders = TestOrder.objects.filter(
+            patient=user,
+            status__in=['pending', 'accepted', 'sample_collected', 'processing']
+        ).count()
+        
+        # Recent prescriptions
+        recent_prescriptions = Prescription.objects.filter(
+            user=user
+        ).order_by('-created_at')[:5]
+        
+        recent_prescriptions_data = [{
+            'id': str(p.id),
+            'doctor_name': p.doctor.get_full_name() if p.doctor else p.clinic_name or 'Unknown',
+            'diagnosis': p.diagnosis,
+            'status': p.status,
+            'created_at': p.created_at.isoformat(),
+            'drugs_count': p.drugs.count()
+        } for p in recent_prescriptions]
+        
+        # Recent lab reports
+        recent_reports = LabReport.objects.filter(user=user).order_by('-created_at')[:5]
+        recent_reports_data = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'laboratory_name': r.laboratory_name,
+            'has_critical_values': r.has_critical_values,
+            'created_at': r.created_at.isoformat()
+        } for r in recent_reports]
+        
+        return Response({
+            'stats': {
+                'total_prescriptions': total_prescriptions,
+                'active_prescriptions': active_prescriptions,
+                'reminders_today': reminders_today,
+                'pending_reminders': pending_reminders,
+                'total_lab_reports': total_lab_reports,
+                'recent_lab_reports': recent_lab_reports,
+                'critical_alerts': critical_alerts,
+                'pending_test_orders': pending_test_orders,
+            },
+            'recent_prescriptions': recent_prescriptions_data,
+            'recent_lab_reports': recent_reports_data
+        })
+
+
+class PatientLabReportUploadView(views.APIView):
+    """Patient uploads their own lab report"""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from .models import LabReport
+        from .services import AzureServices
+        from datetime import date
+        
+        file = request.FILES.get('file')
+        report_title = request.data.get('report_title', 'Lab Report')
+        report_type = request.data.get('report_type', 'other')
+        report_date = request.data.get('report_date')
+        laboratory_name = request.data.get('laboratory_name', '')
+        notes = request.data.get('notes', '')
+        
+        if not file:
+            return Response({'error': 'File is required'}, status=400)
+        
+        # Validate file type
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+        if file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type. Use PDF, JPG, or PNG.'}, status=400)
+        
+        # Validate file size (10MB max)
+        if file.size > 10 * 1024 * 1024:
+            return Response({'error': 'File too large. Maximum 10MB.'}, status=400)
+        
+        azure_services = AzureServices()
+        
+        try:
+            # Upload file
+            blob_name, file_url = azure_services.upload_lab_report(
+                file.read(),
+                f"patient_{request.user.id}_{file.name}"
+            )
+        except Exception as e:
+            logger.error(f"File upload failed: {e}")
+            return Response({'error': 'Failed to upload file'}, status=500)
+        
+        # Create report
+        report = LabReport.objects.create(
+            user=request.user,
+            source='self',
+            report_type=report_type,
+            report_title=report_title,
+            report_date=report_date or date.today(),
+            laboratory_name=laboratory_name,
+            file_url=file_url,
+            file_type=file.name.split('.')[-1].lower(),
+            blob_name=blob_name,
+            notes=notes,
+            status='uploaded'
+        )
+        
+        # Try OCR
+        try:
+            file.seek(0)
+            ocr_result = azure_services.perform_ocr(file.read())
+            report.ocr_raw_text = ocr_result.get('text', '')
+            report.ocr_confidence = ocr_result.get('confidence')
+            report.status = 'pending'  # Not analyzed yet - user needs to click analyze
+            report.save()
+            logger.info(f"Patient uploaded report. OCR text length: {len(report.ocr_raw_text)}")
+        except Exception as e:
+            logger.error(f"OCR failed: {e}")
+            report.status = 'pending'
+            report.save()
+        
+        return Response({
+            'message': 'Report uploaded successfully',
+            'report_id': str(report.id),
+            'file_url': file_url
+        }, status=201)
+
+
+class PatientLabReportAnalyzeView(views.APIView):
+    """Analyze a lab report using AI"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request, report_id):
+        from .models import LabReport, CriticalValueAlert
+        from .services import AzureServices
+        
+        try:
+            report = LabReport.objects.get(id=report_id, user=request.user)
+        except LabReport.DoesNotExist:
+            return Response({'error': 'Report not found'}, status=404)
+        
+        # If already analyzed with alerts, return current data
+        existing_alerts = CriticalValueAlert.objects.filter(lab_report=report)
+        if report.status == 'analyzed' and existing_alerts.exists():
+            abnormal_values = [{
+                'test_name': a.test_name,
+                'severity': a.severity,
+                'result': a.measured_value,
+                'expected': a.normal_range,
+                'meaning': a.description,
+                'unit': a.unit,
+                'recommendation': a.recommendation,
+            } for a in existing_alerts]
+            
+            return Response({
+                'status': 'analyzed',
+                'analysis_summary': report.analysis_summary or f"This report contains {len(abnormal_values)} abnormal value(s).",
+                'abnormal_values': abnormal_values,
+                'recommendations': list(set([a.recommendation for a in existing_alerts if a.recommendation])),
+            })
+        
+        azure_services = AzureServices()
+        
+        # Get OCR text if not available
+        ocr_text = report.ocr_raw_text
+        if not ocr_text and report.file_url:
+            try:
+                ocr_result = azure_services.extract_text(report.file_url)
+                ocr_text = ocr_result.get('text', '')
+                report.ocr_raw_text = ocr_text
+                report.ocr_confidence = ocr_result.get('confidence')
+                report.save()
+            except Exception as e:
+                logger.error(f"OCR failed: {e}")
+        
+        if not ocr_text:
+            return Response({'error': 'Could not extract text from report'}, status=400)
+        
+        # Analyze using Azure OpenAI
+        try:
+            logger.info(f"Starting analysis for report {report_id}")
+            logger.info(f"OCR text length: {len(ocr_text)}")
+            
+            analysis = azure_services.analyze_lab_report(ocr_text, report.report_type)
+            
+            logger.info(f"Analysis result - Summary: {analysis.get('summary', '')[:100]}")
+            logger.info(f"Analysis result - Abnormal values count: {len(analysis.get('abnormal_values', []))}")
+            
+            # Store summary
+            report.analysis_summary = analysis.get('summary', '')
+            report.parsed_data = analysis.get('parsed_data', {})
+            
+            # Create CriticalValueAlert records from abnormal values
+            abnormal_values = analysis.get('abnormal_values', [])
+            has_critical = False
+            
+            # Clear existing alerts first
+            CriticalValueAlert.objects.filter(lab_report=report).delete()
+            
+            for av in abnormal_values:
+                logger.info(f"Processing abnormal value: {av}")
+                # Map severity from analyze_lab_report format to CriticalValueAlert format
+                severity_map = {
+                    'mild': 'abnormal',
+                    'moderate': 'abnormal', 
+                    'significant': 'critical_high',
+                    'critical': 'panic',
+                    'abnormal': 'abnormal',
+                    'critical_low': 'critical_low',
+                    'critical_high': 'critical_high',
+                    'panic': 'panic',
+                    'low': 'critical_low',
+                    'high': 'critical_high',
+                }
+                raw_severity = str(av.get('severity', 'abnormal')).lower()
+                severity = severity_map.get(raw_severity, 'abnormal')
+                
+                if severity in ['critical_low', 'critical_high', 'panic']:
+                    has_critical = True
+                
+                CriticalValueAlert.objects.create(
+                    lab_report=report,
+                    test_name=av.get('test_name', 'Unknown Test'),
+                    measured_value=av.get('result', av.get('measured_value', '')),
+                    unit=av.get('unit', ''),
+                    normal_range=av.get('expected', av.get('normal_range', '')),
+                    severity=severity,
+                    description=av.get('meaning', av.get('description', '')),
+                    recommendation=av.get('recommendation', '')
+                )
+            
+            report.has_critical_values = has_critical
+            report.abnormal_values = [av.get('test_name', '') for av in abnormal_values]
+            report.recommendations = analysis.get('recommendations', [])
+            report.status = 'analyzed'
+            report.save()
+            
+            # Format response
+            formatted_abnormal = [{
+                'test_name': av.get('test_name', 'Unknown Test'),
+                'severity': av.get('severity', 'abnormal'),
+                'result': av.get('result', av.get('measured_value', '')),
+                'expected': av.get('expected', av.get('normal_range', '')),
+                'meaning': av.get('meaning', av.get('description', '')),
+                'unit': av.get('unit', ''),
+                'recommendation': av.get('recommendation', ''),
+            } for av in abnormal_values]
+            
+            return Response({
+                'status': 'analyzed',
+                'analysis_summary': report.analysis_summary,
+                'abnormal_values': formatted_abnormal,
+                'recommendations': report.recommendations,
+            })
+        except Exception as e:
+            logger.error(f"Analysis failed: {e}")
+            return Response({'error': 'Analysis failed. Please try again.'}, status=500)

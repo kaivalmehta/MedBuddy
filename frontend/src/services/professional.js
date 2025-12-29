@@ -55,6 +55,10 @@ export const getLabProfile = () => api.get('/laboratory/profile/')
 export const updateLabProfile = (data) => api.patch('/laboratory/profile/', data)
 
 // Patient Access (OTP Verification)
+export const labCheckPatient = (email) => {
+  return api.post('/laboratory/patient/check/', { email })
+}
+
 export const labRequestPatientAccess = (data) => {
   return api.post('/laboratory/patient/request-access/', data)
 }
@@ -63,11 +67,27 @@ export const labVerifyPatientOTP = (data) => {
   return api.post('/laboratory/patient/verify-otp/', data)
 }
 
-// Report Upload (with OTP)
+export const labGetActiveSessions = () => {
+  return api.get('/laboratory/patient/sessions/')
+}
+
+export const labGetPatientHistory = (patientId) => {
+  return api.get(`/laboratory/patient/${patientId}/history/`)
+}
+
+// Report Upload & Management
 export const uploadLabReport = (formData) => {
   return api.post('/laboratory/report/upload/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
+}
+
+export const labGetSentReports = (params) => {
+  return api.get('/laboratory/reports/sent/', { params })
+}
+
+export const labGetReportDetail = (reportId) => {
+  return api.get(`/laboratory/reports/${reportId}/`)
 }
 
 // ============================================
@@ -175,9 +195,14 @@ export const laboratoryService = {
   getDashboard: getLabDashboard,
   getProfile: getLabProfile,
   updateProfile: updateLabProfile,
+  checkPatient: labCheckPatient,
   requestPatientAccess: labRequestPatientAccess,
   verifyPatientOTP: labVerifyPatientOTP,
+  getActiveSessions: labGetActiveSessions,
+  getPatientHistory: labGetPatientHistory,
   uploadReport: uploadLabReport,
+  getSentReports: labGetSentReports,
+  getReportDetail: labGetReportDetail,
 }
 
 // ============================================
@@ -190,6 +215,7 @@ export const labReportService = {
   upload: (formData) => api.post('/prescriptions/lab-reports/upload/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   }),
+  analyze: (id) => api.post(`/prescriptions/lab-reports/${id}/analyze/`),
 }
 
 export const pharmacyExtendedService = {
@@ -216,4 +242,89 @@ export const pharmacyExtendedService = {
   addPharmacyReview,
   getOrderChat,
   sendChatMessage,
+}
+
+// ============================================
+// TEST ORDER APIs
+// ============================================
+
+// Lab Search (for doctors)
+export const searchLaboratories = (params) => api.get('/test-orders/labs/search/', { params })
+export const getLaboratoryDetail = (labId) => api.get(`/test-orders/labs/${labId}/`)
+
+// Doctor Test Orders
+export const createTestOrder = (data) => api.post('/test-orders/doctor/orders/create/', data)
+export const getDoctorTestOrders = (params) => api.get('/test-orders/doctor/orders/', { params })
+export const getDoctorTestOrderDetail = (orderId) => api.get(`/test-orders/doctor/orders/${orderId}/`)
+
+// Lab Test Orders
+export const getLabTestOrders = (params) => api.get('/test-orders/lab/orders/', { params })
+export const getLabTestOrderDetail = (orderId) => api.get(`/test-orders/lab/orders/${orderId}/`)
+export const acceptTestOrder = (orderId, data) => api.post(`/test-orders/lab/orders/${orderId}/`, { action: 'accept', ...data })
+export const declineTestOrder = (orderId, reason) => api.post(`/test-orders/lab/orders/${orderId}/`, { action: 'decline', decline_reason: reason })
+export const updateTestOrderStatus = (orderId, status, data = {}) => api.post(`/test-orders/lab/orders/${orderId}/status/`, { status, ...data })
+
+// Lab Home Collections
+export const getLabHomeCollections = (params) => api.get('/test-orders/lab/collections/', { params })
+export const updateHomeCollection = (collectionId, data) => api.patch(`/test-orders/lab/collections/${collectionId}/`, data)
+
+// Lab Report Upload with Analysis
+export const uploadReportWithAnalysis = (formData) => api.post('/test-orders/lab/upload-report/', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+})
+
+// Test Catalog
+export const getTestCatalog = () => api.get('/test-orders/catalog/')
+export const addTestToCatalog = (data) => api.post('/test-orders/catalog/', data)
+export const updateTestInCatalog = (testId, data) => api.patch(`/test-orders/catalog/${testId}/`, data)
+export const deleteTestFromCatalog = (testId) => api.delete(`/test-orders/catalog/${testId}/`)
+
+// Critical Alerts
+export const getCriticalAlerts = () => api.get('/test-orders/alerts/')
+export const acknowledgeAlert = (alertId) => api.post(`/test-orders/alerts/${alertId}/acknowledge/`)
+
+// Patient Test Orders
+export const getPatientTestOrders = () => api.get('/test-orders/patient/orders/')
+export const getPatientTestOrderDetail = (orderId) => api.get(`/test-orders/patient/orders/${orderId}/`)
+export const createPatientTestOrder = (data) => api.post('/test-orders/patient/orders/create/', data)
+
+// Test Order Service Object
+export const testOrderService = {
+  // Lab search
+  searchLabs: searchLaboratories,
+  getLabDetail: getLaboratoryDetail,
+  
+  // Doctor
+  create: createTestOrder,
+  getDoctorOrders: getDoctorTestOrders,
+  getDoctorOrderDetail: getDoctorTestOrderDetail,
+  
+  // Lab
+  getLabOrders: getLabTestOrders,
+  getLabOrderDetail: getLabTestOrderDetail,
+  accept: acceptTestOrder,
+  decline: declineTestOrder,
+  updateStatus: updateTestOrderStatus,
+  
+  // Home collection
+  getCollections: getLabHomeCollections,
+  updateCollection: updateHomeCollection,
+  
+  // Report upload
+  uploadReport: uploadReportWithAnalysis,
+  
+  // Catalog
+  getCatalog: getTestCatalog,
+  addTest: addTestToCatalog,
+  updateTest: updateTestInCatalog,
+  deleteTest: deleteTestFromCatalog,
+  
+  // Alerts
+  getAlerts: getCriticalAlerts,
+  acknowledgeAlert: acknowledgeAlert,
+  
+  // Patient
+  getPatientOrders: getPatientTestOrders,
+  getPatientOrderDetail: getPatientTestOrderDetail,
+  createPatientOrder: createPatientTestOrder,
 }

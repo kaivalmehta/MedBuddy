@@ -39,6 +39,15 @@ class User(AbstractUser):
     )
     verification_notes = models.TextField(blank=True)
     
+    # Verification rejection
+    is_rejected = models.BooleanField(default=False)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejection_reason = models.TextField(blank=True)
+    rejected_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='rejected_users'
+    )
+    
     # Account Suspension
     is_suspended = models.BooleanField(default=False)
     suspended_at = models.DateTimeField(null=True, blank=True)
@@ -336,8 +345,10 @@ class LaboratoryProfile(models.Model):
     
     # Services offered
     services = models.JSONField(default=list, blank=True)  # ['blood_test', 'xray', 'mri', etc.]
+    home_collection_available = models.BooleanField(default=False)  # Lab offers home collection
     
     is_verified = models.BooleanField(default=False)
+    verification_document = models.URLField(blank=True)  # License PDF URL
     operating_hours = models.JSONField(default=dict, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)

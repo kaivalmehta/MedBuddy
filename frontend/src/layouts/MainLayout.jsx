@@ -9,7 +9,7 @@ import {
   Heart, Home, Upload, FileText, User, Users, Bell, MapPin,
   ShoppingBag, LayoutDashboard, Package, Boxes, Menu, X, LogOut,
   ChevronRight, Settings, Stethoscope, FlaskConical, UserSearch,
-  FilePlus, ClipboardList, History, Send, TestTube
+  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp
 } from 'lucide-react'
 
 // Navigation items for each role
@@ -18,6 +18,9 @@ const patientNav = [
   { path: '/upload', icon: Upload, label: 'Upload Prescription' },
   { path: '/prescriptions', icon: FileText, label: 'My Prescriptions' },
   { path: '/reports', icon: TestTube, label: 'Lab Reports' },
+  { path: '/order-test', icon: FlaskConical, label: 'Order Lab Test' },
+  { path: '/lab-orders', icon: ClipboardList, label: 'My Lab Orders' },
+  { path: '/alerts', icon: Bell, label: 'Health Alerts', highlight: true },
   { path: '/reminders', icon: Bell, label: 'Reminders' },
   { path: '/pharmacies', icon: MapPin, label: 'Find Pharmacy' },
   { path: '/orders', icon: ShoppingBag, label: 'My Orders' },
@@ -28,10 +31,11 @@ const patientNav = [
 
 const pharmacyNav = [
   { path: '/pharmacy', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/pharmacy/patient-access', icon: UserSearch, label: 'Access Patient' },
   { path: '/pharmacy/scan', icon: Upload, label: 'Scan & Send' },
   { path: '/pharmacy/sent', icon: Send, label: 'Sent Prescriptions' },
   { divider: true },
-  { path: '/pharmacy/orders', icon: Package, label: 'Incoming Orders' },
+  { path: '/pharmacy/sales', icon: TrendingUp, label: 'Sales Dashboard' },
   { path: '/pharmacy/inventory', icon: Boxes, label: 'Inventory' },
 ]
 
@@ -41,16 +45,28 @@ const doctorNav = [
   { path: '/doctor/create-prescription', icon: FilePlus, label: 'New Prescription' },
   { path: '/doctor/upload', icon: Upload, label: 'Upload & Send' },
   { divider: true },
+  { path: '/doctor/order-test', icon: FlaskConical, label: 'Order Lab Test' },
+  { path: '/doctor/test-orders', icon: ClipboardList, label: 'Test Orders' },
+  { path: '/doctor/alerts', icon: Bell, label: 'Critical Alerts', highlight: true },
+  { divider: true },
   { path: '/doctor/history', icon: History, label: 'Sent Prescriptions' },
   { path: '/doctor/profile', icon: Stethoscope, label: 'My Profile' },
 ]
 
 const laboratoryNav = [
   { path: '/laboratory', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/laboratory/test-orders', icon: ClipboardList, label: 'Test Orders' },
+  { path: '/laboratory/collections', icon: Package, label: 'Home Collections' },
   { path: '/laboratory/upload', icon: Upload, label: 'Upload Report' },
   { path: '/laboratory/sent', icon: Send, label: 'Sent Reports' },
   { divider: true },
   { path: '/laboratory/profile', icon: FlaskConical, label: 'Lab Profile' },
+]
+
+const adminNav = [
+  { path: '/admin', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/admin/verifications', icon: UserSearch, label: 'Verification Requests' },
+  { path: '/admin/suspensions', icon: Users, label: 'Suspensions' },
 ]
 
 // Get navigation based on user role
@@ -59,6 +75,7 @@ const getNavItems = (role) => {
     case 'pharmacy': return pharmacyNav
     case 'doctor': return doctorNav
     case 'laboratory': return laboratoryNav
+    case 'admin': return adminNav
     default: return patientNav
   }
 }
@@ -69,7 +86,8 @@ const getRoleDisplay = (role) => {
     patient: 'Patient',
     pharmacy: 'Pharmacy',
     doctor: 'Doctor',
-    laboratory: 'Laboratory'
+    laboratory: 'Laboratory',
+    admin: 'Admin'
   }
   return displays[role] || 'User'
 }
@@ -80,7 +98,8 @@ const getRoleColor = (role) => {
     patient: 'from-primary-500 to-primary-600',
     pharmacy: 'from-emerald-500 to-emerald-600',
     doctor: 'from-blue-500 to-blue-600',
-    laboratory: 'from-purple-500 to-purple-600'
+    laboratory: 'from-purple-500 to-purple-600',
+    admin: 'from-red-500 to-red-600'
   }
   return colors[role] || 'from-primary-500 to-primary-600'
 }
