@@ -86,3 +86,6 @@ secrets.json
 
 # Azure
 .azure/
+
+__pycache__/
+*.pyc
