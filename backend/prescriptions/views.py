@@ -560,17 +560,20 @@ class PatientDashboardView(views.APIView):
             status='active'
         ).count()
         
-        # Reminder stats
+        # Reminder stats - use reminder_time field instead of next_reminder_at
         reminders_today = MedicationReminder.objects.filter(
             user=user,
             is_active=True,
-            next_reminder_at__date=today
+            start_date__lte=today,
+            end_date__gte=today
         ).count()
         
         pending_reminders = MedicationReminder.objects.filter(
             user=user,
             is_active=True,
-            next_reminder_at__lte=timezone.now()
+            start_date__lte=today
+        ).exclude(
+            end_date__lt=today
         ).count()
         
         # Lab report stats
@@ -580,9 +583,9 @@ class PatientDashboardView(views.APIView):
             created_at__gte=timezone.now() - timedelta(days=30)
         ).count()
         
-        # Critical alerts (unacknowledged)
+        # Critical alerts (unacknowledged) - linked through lab_report
         critical_alerts = CriticalValueAlert.objects.filter(
-            patient=user,
+            lab_report__user=user,
             acknowledged_by_patient=False
         ).count()
         
@@ -599,8 +602,8 @@ class PatientDashboardView(views.APIView):
         
         recent_prescriptions_data = [{
             'id': str(p.id),
-            'doctor_name': p.doctor.get_full_name() if p.doctor else p.clinic_name or 'Unknown',
-            'diagnosis': p.diagnosis,
+            'doctor_name': p.doctor_name or p.clinic_name or 'Unknown',
+            'diagnosis': p.notes or '',
             'status': p.status,
             'created_at': p.created_at.isoformat(),
             'drugs_count': p.drugs.count()

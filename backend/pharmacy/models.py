@@ -32,6 +32,11 @@ class Pharmacy(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Location fields (add after existing fields)
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    rating = models.DecimalField(max_digits=3, decimal_places=2, null=True, blank=True)
     
     class Meta:
         db_table = 'pharmacies'

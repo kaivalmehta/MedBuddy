@@ -1,3 +1,5 @@
+// frontend/src/pages/auth/Register.jsx
+
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -6,7 +8,7 @@ import { initiateRegistration, verifyRegistrationOTP, resendRegistrationOTP } fr
 import { 
   Eye, EyeOff, Mail, Lock, User, Phone, Shield, ArrowLeft, Loader2, 
   AlertCircle, CheckCircle, Upload, Building, FileText, Stethoscope,
-  FlaskConical, Pill, MapPin
+  FlaskConical, Pill, MapPin, Navigation
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -25,10 +27,65 @@ export default function Register() {
   const [resendTimer, setResendTimer] = useState(0)
   const [verificationFile, setVerificationFile] = useState(null)
   
+  // Location state
+  const [location, setLocation] = useState(null)
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  
   const otpRefs = useRef([])
   const fileInputRef = useRef(null)
   const { register, handleSubmit, watch, formState: { errors }, reset } = useForm()
   const password = watch('password')
+
+  // Get current location
+  const getLocation = () => {
+    setLocationLoading(true)
+    setLocationError('')
+    
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported by your browser')
+      setLocationLoading(false)
+      return
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        })
+        setLocationLoading(false)
+        setLocationError('')
+      },
+      (error) => {
+        let message = 'Could not get location.'
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            message = 'Location permission denied. You can add it later in settings.'
+            break
+          case error.POSITION_UNAVAILABLE:
+            message = 'Location unavailable. You can add it later in settings.'
+            break
+          case error.TIMEOUT:
+            message = 'Location request timed out. You can add it later in settings.'
+            break
+        }
+        setLocationError(message)
+        setLocationLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+    )
+  }
+
+  // Auto-get location when professional role is selected
+  useEffect(() => {
+    if (['doctor', 'pharmacy', 'laboratory'].includes(role)) {
+      getLocation()
+    } else {
+      setLocation(null)
+      setLocationError('')
+    }
+  }, [role])
 
   const roles = [
     { value: 'patient', label: 'Patient', icon: User, desc: 'Manage your prescriptions', color: 'bg-blue-500' },
@@ -89,6 +146,12 @@ export default function Register() {
       formData.append('phone', data.phone || '')
       formData.append('role', role)
 
+      // Add location if available (for professionals)
+      if (location && ['doctor', 'pharmacy', 'laboratory'].includes(role)) {
+        formData.append('latitude', location.latitude)
+        formData.append('longitude', location.longitude)
+      }
+
       // Add role-specific profile data
       if (role === 'doctor') {
         formData.append('doctor_profile', JSON.stringify({
@@ -97,6 +160,8 @@ export default function Register() {
           registration_number: data.license_number || '',
           clinic_name: data.clinic_name || '',
           clinic_address: data.address || '',
+          latitude: location?.latitude || null,
+          longitude: location?.longitude || null,
         }))
       } else if (role === 'pharmacy') {
         formData.append('pharmacy_profile', JSON.stringify({
@@ -106,6 +171,8 @@ export default function Register() {
           city: data.city || '',
           state: data.state || '',
           zip_code: data.zip_code || '',
+          latitude: location?.latitude || null,
+          longitude: location?.longitude || null,
         }))
       } else if (role === 'laboratory') {
         formData.append('laboratory_profile', JSON.stringify({
@@ -115,6 +182,8 @@ export default function Register() {
           city: data.city || '',
           state: data.state || '',
           zip_code: data.zip_code || '',
+          latitude: location?.latitude || null,
+          longitude: location?.longitude || null,
         }))
       }
 
@@ -263,6 +332,48 @@ export default function Register() {
           <Building className="w-4 h-4" />
           Professional Details
         </h3>
+
+        {/* Location Capture Section */}
+        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-medium text-blue-900">Your Location</span>
+            </div>
+            {locationLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+            ) : location ? (
+              <span className="text-sm text-green-600 flex items-center gap-1">
+                <CheckCircle className="w-4 h-4" />
+                Captured
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={getLocation}
+                className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+              >
+                <Navigation className="w-4 h-4" />
+                Enable Location
+              </button>
+            )}
+          </div>
+          
+          {location && (
+            <p className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded inline-block">
+              📍 {location.latitude.toFixed(4)}, {location.longitude.toFixed(4)}
+            </p>
+          )}
+          
+          {locationError && (
+            <p className="text-xs text-amber-600 mt-1">{locationError}</p>
+          )}
+          
+          <p className="text-xs text-gray-600 mt-2">
+            Patients will be able to find you in "Find Nearby" based on this location.
+            You can update it later in your profile settings.
+          </p>
+        </div>
 
         {/* Doctor-specific fields */}
         {role === 'doctor' && (

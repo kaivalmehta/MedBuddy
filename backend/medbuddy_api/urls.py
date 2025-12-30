@@ -38,6 +38,11 @@ urlpatterns = [
     path('api/reports/', include('prescriptions.report_urls')),
     
     # ============================================
+    # SPEECH SERVICES APIs
+    # ============================================
+    path('api/speech/', include('prescriptions.urls_speech')),
+    
+    # ============================================
     # PHARMACY APIs
     # ============================================
     path('api/pharmacy/', include('pharmacy.urls')),
@@ -52,6 +57,11 @@ urlpatterns = [
     # ============================================
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+
+    # ============================================
+    # LOCATION/MAPS APIs
+    # ============================================
+    path('api/location/', include('prescriptions.urls_maps')),
 ]
 
 

@@ -8,8 +8,9 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Heart, Home, Upload, FileText, User, Users, Bell, MapPin,
   ShoppingBag, LayoutDashboard, Package, Boxes, Menu, X, LogOut,
-  ChevronRight, Settings, Stethoscope, FlaskConical, UserSearch,
-  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp
+  ChevronRight, Stethoscope, FlaskConical, UserSearch,
+  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp,Building2,
+  
 } from 'lucide-react'
 
 // Navigation items for each role
@@ -22,11 +23,11 @@ const patientNav = [
   { path: '/lab-orders', icon: ClipboardList, label: 'My Lab Orders' },
   { path: '/alerts', icon: Bell, label: 'Health Alerts', highlight: true },
   { path: '/reminders', icon: Bell, label: 'Reminders' },
-  { path: '/pharmacies', icon: MapPin, label: 'Find Pharmacy' },
   { path: '/orders', icon: ShoppingBag, label: 'My Orders' },
   { divider: true },
   { path: '/health-profile', icon: User, label: 'Health Profile' },
   { path: '/family', icon: Users, label: 'Family Members' },
+  { path: '/find-nearby', label: 'Find Nearby', icon: MapPin },
 ]
 
 const pharmacyNav = [
@@ -37,6 +38,7 @@ const pharmacyNav = [
   { divider: true },
   { path: '/pharmacy/sales', icon: TrendingUp, label: 'Sales Dashboard' },
   { path: '/pharmacy/inventory', icon: Boxes, label: 'Inventory' },
+  { path: '/pharmacy/profile', label: 'Profile', icon: Building2 },
 ]
 
 const doctorNav = [
@@ -223,16 +225,6 @@ export default function MainLayout() {
               <h1 className="text-xl font-display font-semibold text-secondary-800">
                 {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
               </h1>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <button className="p-2 text-secondary-400 hover:text-secondary-600 hover:bg-gray-100 rounded-lg transition-colors relative">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-danger-500 rounded-full" />
-              </button>
-              <button className="p-2 text-secondary-400 hover:text-secondary-600 hover:bg-gray-100 rounded-lg transition-colors">
-                <Settings className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </header>

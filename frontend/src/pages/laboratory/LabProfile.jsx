@@ -1,114 +1,82 @@
+// frontend/src/pages/laboratory/LabProfile.jsx
+
 import { useState, useEffect } from 'react'
-import { laboratoryService } from '../../services/professional'
 import { 
-  FlaskConical, Save, Loader2, AlertCircle, CheckCircle, 
-  Building, Phone, MapPin, Clock, FileText, Shield
+  FlaskConical, Phone, Mail, MapPin, Clock, Save, Loader2, 
+  CheckCircle, AlertCircle, Navigation, Shield, Home,
+  FileText, Calendar, Award
 } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
+import { laboratoryService } from '../../services/professional'
+import { locationService } from '../../services/location'
 import { motion } from 'framer-motion'
 
 export default function LabProfile() {
+  const { user } = useAuth()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [editMode, setEditMode] = useState(false)
+  
+  // Location state
+  const [locationLoading, setLocationLoading] = useState(false)
+  const [locationError, setLocationError] = useState('')
+  const [locationSuccess, setLocationSuccess] = useState('')
 
   const [formData, setFormData] = useState({
     name: '',
     license_number: '',
+    phone: '',
     address: '',
     city: '',
     state: '',
     zip_code: '',
-    phone: '',
-    services: [],
-    home_collection_available: false,
-    operating_hours: {}
+    accreditation: '',
+    description: '',
+    offers_home_collection: false,
+    opening_time: '08:00',
+    closing_time: '20:00',
   })
 
-  const availableServices = [
-    'Blood Tests',
-    'Urine Tests',
-    'X-Ray',
-    'MRI',
-    'CT Scan',
-    'Ultrasound',
-    'ECG/EKG',
-    'Pathology',
-    'Microbiology',
-    'Biochemistry',
-    'Hematology',
-    'Immunology',
-    'Genetic Testing',
-    'COVID-19 Testing',
-    'Drug Testing',
-    'Allergy Testing'
-  ]
-
-  const daysOfWeek = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
-
   useEffect(() => {
-    loadProfile()
+    fetchProfile()
   }, [])
 
-  const loadProfile = async () => {
+  const fetchProfile = async () => {
     try {
-      const res = await laboratoryService.getProfile()
-      setProfile(res.data)
+      const response = await laboratoryService.getProfile()
+      const data = response.data
+      setProfile(data)
+      
       setFormData({
-        name: res.data.name || '',
-        license_number: res.data.license_number || '',
-        address: res.data.address || '',
-        city: res.data.city || '',
-        state: res.data.state || '',
-        zip_code: res.data.zip_code || '',
-        phone: res.data.phone || '',
-        services: res.data.services || [],
-        home_collection_available: res.data.home_collection_available || false,
-        operating_hours: res.data.operating_hours || {}
+        name: data.name || '',
+        license_number: data.license_number || '',
+        phone: data.phone || '',
+        address: data.address || '',
+        city: data.city || '',
+        state: data.state || '',
+        zip_code: data.zip_code || '',
+        accreditation: data.accreditation || '',
+        description: data.description || '',
+        offers_home_collection: data.offers_home_collection || false,
+        opening_time: data.opening_time || '08:00',
+        closing_time: data.closing_time || '20:00',
       })
     } catch (err) {
-      console.error('Failed to load profile:', err)
       setError('Failed to load profile')
+      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
   const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
-  }
-
-  const handleServiceToggle = (service) => {
-    setFormData(prev => {
-      const services = prev.services.includes(service)
-        ? prev.services.filter(s => s !== service)
-        : [...prev.services, service]
-      return { ...prev, services }
-    })
-  }
-
-  const handleHoursChange = (day, field, value) => {
+    const { name, value, type, checked } = e.target
     setFormData(prev => ({
       ...prev,
-      operating_hours: {
-        ...prev.operating_hours,
-        [day]: {
-          ...prev.operating_hours[day],
-          [field]: value
-        }
-      }
-    }))
-  }
-
-  const handleDayClosed = (day, closed) => {
-    setFormData(prev => ({
-      ...prev,
-      operating_hours: {
-        ...prev.operating_hours,
-        [day]: closed ? { closed: true } : { open: '09:00', close: '17:00' }
-      }
+      [name]: type === 'checkbox' ? checked : value
     }))
   }
 
@@ -121,339 +89,462 @@ export default function LabProfile() {
     try {
       await laboratoryService.updateProfile(formData)
       setSuccess('Profile updated successfully!')
-      setTimeout(() => setSuccess(''), 3000)
+      setEditMode(false)
+      fetchProfile()
     } catch (err) {
-      console.error('Failed to update profile:', err)
       setError(err.response?.data?.error || 'Failed to update profile')
     } finally {
       setSaving(false)
     }
   }
 
+  const updateLocation = async () => {
+    setLocationLoading(true)
+    setLocationError('')
+    setLocationSuccess('')
+
+    try {
+      const loc = await locationService.getCurrentLocation()
+      await locationService.updateMyLocation(loc.lat, loc.lon)
+      setLocationSuccess('Location updated successfully!')
+      setProfile(prev => ({
+        ...prev,
+        latitude: loc.lat,
+        longitude: loc.lon
+      }))
+    } catch (err) {
+      setLocationError(err.message || 'Failed to update location')
+    } finally {
+      setLocationLoading(false)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="w-10 h-10 animate-spin text-purple-600" />
+      <div className="flex items-center justify-center min-h-96">
+        <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Laboratory Profile</h1>
-          <p className="text-gray-600 mt-1">Manage your laboratory information</p>
+          <h1 className="text-2xl font-bold text-gray-900">Laboratory Profile</h1>
+          <p className="text-gray-600">Manage your laboratory information</p>
         </div>
-        <div className="flex items-center gap-2">
-          {profile?.is_verified ? (
-            <span className="flex items-center gap-2 px-4 py-2 bg-green-100 text-green-700 rounded-lg">
-              <CheckCircle className="w-5 h-5" />
-              Verified
-            </span>
-          ) : (
-            <span className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg">
-              <Clock className="w-5 h-5" />
-              Pending Verification
-            </span>
-          )}
-        </div>
+        {!editMode && (
+          <button
+            onClick={() => setEditMode(true)}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
+          >
+            Edit Profile
+          </button>
+        )}
       </div>
 
+      {/* Messages */}
       {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700"
-        >
-          <AlertCircle className="w-5 h-5" />
-          {error}
-        </motion.div>
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600" />
+          <p className="text-red-700">{error}</p>
+        </div>
       )}
-
       {success && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700"
-        >
-          <CheckCircle className="w-5 h-5" />
-          {success}
-        </motion.div>
+        <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <p className="text-green-700">{success}</p>
+        </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Basic Information */}
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <Building className="w-5 h-5 text-purple-500" />
-            Basic Information
-          </h2>
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main Profile Info */}
+        <div className="lg:col-span-2 space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FlaskConical className="w-5 h-5 text-amber-600" />
+              Laboratory Information
+            </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Laboratory Name *
-              </label>
-              <input
-                type="text"
-                name="name"
-                value={formData.name}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                License Number *
-              </label>
-              <input
-                type="text"
-                name="license_number"
-                value={formData.license_number}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Phone *
-              </label>
-              <div className="relative">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="tel"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Address */}
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-purple-500" />
-            Address
-          </h2>
-
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Street Address *
-              </label>
-              <input
-                type="text"
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  City *
-                </label>
-                <input
-                  type="text"
-                  name="city"
-                  value={formData.city}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  State *
-                </label>
-                <input
-                  type="text"
-                  name="state"
-                  value={formData.state}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  ZIP Code *
-                </label>
-                <input
-                  type="text"
-                  name="zip_code"
-                  value={formData.zip_code}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Services */}
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <FlaskConical className="w-5 h-5 text-purple-500" />
-            Services Offered
-          </h2>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {availableServices.map((service) => (
-              <label
-                key={service}
-                className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition ${
-                  formData.services.includes(service)
-                    ? 'border-purple-500 bg-purple-50 text-purple-700'
-                    : 'border-gray-200 hover:border-purple-300 hover:bg-purple-50/50'
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={formData.services.includes(service)}
-                  onChange={() => handleServiceToggle(service)}
-                  className="sr-only"
-                />
-                <div className={`w-4 h-4 rounded border flex items-center justify-center ${
-                  formData.services.includes(service)
-                    ? 'bg-purple-500 border-purple-500'
-                    : 'border-gray-300'
-                }`}>
-                  {formData.services.includes(service) && (
-                    <CheckCircle className="w-3 h-3 text-white" />
-                  )}
-                </div>
-                <span className="text-sm">{service}</span>
-              </label>
-            ))}
-          </div>
-
-          {/* Home Collection Toggle */}
-          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                  <MapPin className="w-5 h-5 text-green-600" />
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Laboratory Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    required
+                  />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-800">Home Sample Collection</p>
-                  <p className="text-sm text-gray-600">Offer sample collection at patient's home</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    License Number *
+                  </label>
+                  <input
+                    type="text"
+                    name="license_number"
+                    value={formData.license_number}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    required
+                  />
                 </div>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer">
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      disabled={!editMode}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Accreditation
+                  </label>
+                  <div className="relative">
+                    <Award className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      name="accreditation"
+                      value={formData.accreditation}
+                      onChange={handleChange}
+                      disabled={!editMode}
+                      placeholder="e.g., CAP, CLIA, NABL"
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Address *
+                </label>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    name="address"
+                    value={formData.address}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
+                  <input
+                    type="text"
+                    name="city"
+                    value={formData.city}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                  <input
+                    type="text"
+                    name="state"
+                    value={formData.state}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ZIP Code</label>
+                  <input
+                    type="text"
+                    name="zip_code"
+                    value={formData.zip_code}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Description
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleChange}
+                  disabled={!editMode}
+                  rows={3}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50 disabled:text-gray-500"
+                  placeholder="Brief description of your laboratory services..."
+                />
+              </div>
+
+              {editMode && (
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" />
+                        Save Changes
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditMode(false)
+                      fetchProfile()
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </form>
+          </motion.div>
+
+          {/* Services & Hours */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-amber-600" />
+              Services & Hours
+            </h2>
+
+            <div className="space-y-4">
+              {/* Home Collection Toggle */}
+              <label className="flex items-center gap-3 p-4 bg-amber-50 rounded-lg cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={formData.home_collection_available}
-                  onChange={(e) => setFormData(prev => ({ ...prev, home_collection_available: e.target.checked }))}
-                  className="sr-only peer"
+                  name="offers_home_collection"
+                  checked={formData.offers_home_collection}
+                  onChange={handleChange}
+                  disabled={!editMode}
+                  className="w-5 h-5 text-amber-600 rounded"
                 />
-                <div className="w-11 h-6 bg-gray-300 peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Operating Hours */}
-        <div className="card">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <Clock className="w-5 h-5 text-purple-500" />
-            Operating Hours
-          </h2>
-
-          <div className="space-y-3">
-            {daysOfWeek.map((day) => {
-              const hours = formData.operating_hours[day] || {}
-              const isClosed = hours.closed
-
-              return (
-                <div key={day} className="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-                  <span className="w-24 font-medium text-gray-700 capitalize">{day}</span>
-                  
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={isClosed}
-                      onChange={(e) => handleDayClosed(day, e.target.checked)}
-                      className="w-4 h-4 text-purple-600 rounded focus:ring-purple-500"
-                    />
-                    <span className="text-sm text-gray-600">Closed</span>
-                  </label>
-
-                  {!isClosed && (
-                    <>
-                      <input
-                        type="time"
-                        value={hours.open || '09:00'}
-                        onChange={(e) => handleHoursChange(day, 'open', e.target.value)}
-                        className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                      />
-                      <span className="text-gray-500">to</span>
-                      <input
-                        type="time"
-                        value={hours.close || '17:00'}
-                        onChange={(e) => handleHoursChange(day, 'close', e.target.value)}
-                        className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-purple-500"
-                      />
-                    </>
-                  )}
+                <Home className="w-5 h-5 text-amber-600" />
+                <div>
+                  <span className="font-medium text-gray-900">Home Sample Collection</span>
+                  <p className="text-sm text-gray-600">Enable if you offer home collection services</p>
                 </div>
-              )
-            })}
-          </div>
-        </div>
+              </label>
 
-        {/* Verification Status */}
-        {!profile?.is_verified && (
-          <div className="card bg-amber-50 border-amber-200">
-            <div className="flex items-start gap-3">
-              <Shield className="w-6 h-6 text-amber-600 mt-0.5" />
-              <div>
-                <h3 className="font-semibold text-amber-800">Verification Required</h3>
-                <p className="text-sm text-amber-700 mt-1">
-                  Your laboratory profile is pending verification. Please ensure all information is accurate
-                  and your license document has been uploaded during registration. An admin will review
-                  and verify your account.
-                </p>
+              {/* Business Hours */}
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Opening Time
+                  </label>
+                  <input
+                    type="time"
+                    name="opening_time"
+                    value={formData.opening_time}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Closing Time
+                  </label>
+                  <input
+                    type="time"
+                    name="closing_time"
+                    value={formData.closing_time}
+                    onChange={handleChange}
+                    disabled={!editMode}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 disabled:bg-gray-50"
+                  />
+                </div>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Submit Button */}
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
-          >
-            {saving ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-5 h-5" />
-                Save Changes
-              </>
-            )}
-          </button>
+          </motion.div>
         </div>
-      </form>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Verification Status */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Shield className="w-5 h-5 text-amber-600" />
+              Verification Status
+            </h2>
+
+            {profile?.is_verified ? (
+              <div className="p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="font-medium">Verified</span>
+                </div>
+                <p className="text-sm text-green-600 mt-1">
+                  Your laboratory is verified and visible to patients.
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 bg-amber-50 rounded-lg">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="font-medium">Pending Verification</span>
+                </div>
+                <p className="text-sm text-amber-600 mt-1">
+                  Your account is under review. You'll be notified once verified.
+                </p>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Location Settings */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-amber-600" />
+              Location for "Find Nearby"
+            </h2>
+
+            {profile?.latitude && profile?.longitude ? (
+              <div className="p-4 bg-green-50 rounded-lg mb-4">
+                <div className="flex items-center gap-2 text-green-700">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="font-medium">Location Set</span>
+                </div>
+                <p className="text-xs text-green-600 mt-1">
+                  📍 {Number(profile.latitude).toFixed(4)}, {Number(profile.longitude).toFixed(4)}
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 bg-amber-50 rounded-lg mb-4">
+                <div className="flex items-center gap-2 text-amber-700">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="font-medium">Location Not Set</span>
+                </div>
+                <p className="text-sm text-amber-600 mt-1">
+                  Set your location so patients can find you nearby.
+                </p>
+              </div>
+            )}
+
+            <button
+              onClick={updateLocation}
+              disabled={locationLoading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 transition"
+            >
+              {locationLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Getting location...
+                </>
+              ) : (
+                <>
+                  <Navigation className="w-5 h-5" />
+                  {profile?.latitude ? 'Update Location' : 'Set My Location'}
+                </>
+              )}
+            </button>
+
+            {locationError && (
+              <p className="mt-3 text-sm text-red-600 text-center">{locationError}</p>
+            )}
+            {locationSuccess && (
+              <p className="mt-3 text-sm text-green-600 text-center">{locationSuccess}</p>
+            )}
+
+            <p className="mt-4 text-xs text-gray-500 text-center">
+              Patients will find your lab based on this location
+            </p>
+          </motion.div>
+
+          {/* Quick Info */}
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-white rounded-xl p-6 shadow-sm border border-gray-200"
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Info</h2>
+            
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-gray-600">
+                <Mail className="w-5 h-5" />
+                <span className="text-sm">{user?.email}</span>
+              </div>
+              {formData.phone && (
+                <div className="flex items-center gap-3 text-gray-600">
+                  <Phone className="w-5 h-5" />
+                  <span className="text-sm">{formData.phone}</span>
+                </div>
+              )}
+              {formData.accreditation && (
+                <div className="flex items-center gap-3 text-gray-600">
+                  <Award className="w-5 h-5" />
+                  <span className="text-sm">{formData.accreditation}</span>
+                </div>
+              )}
+              {formData.offers_home_collection && (
+                <div className="flex items-center gap-3 text-green-600">
+                  <Home className="w-5 h-5" />
+                  <span className="text-sm">Home Collection Available</span>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </div>
     </div>
   )
 }

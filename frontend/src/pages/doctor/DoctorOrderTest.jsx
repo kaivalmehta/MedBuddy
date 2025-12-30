@@ -245,7 +245,7 @@ export default function DoctorOrderTest() {
                     </span>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    {lab.home_collection_available && (
+                    {lab.offers_home_collection && (
                       <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs flex items-center gap-1">
                         <Home className="w-3 h-3" />
                         Home Collection

@@ -5,10 +5,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { labReportService } from '../../services/professional'
+import { speechService } from '../../services/speech'
+import AudioPlayer, { ListenButton } from '../../components/AudioPlayer'
 import { 
   TestTube, ArrowLeft, Calendar, Building2, User, FileText,
   AlertTriangle, CheckCircle, Loader2, Download, Zap, Info,
-  AlertCircle, Activity, RefreshCw
+  AlertCircle, Activity, RefreshCw, Volume2
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -207,6 +209,27 @@ export default function LabReportDetail() {
             </span>
           )}
         </div>
+      </div>
+
+      {/* Listen to Report - Accessibility Feature */}
+      <div className="card bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-100">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+            <Volume2 className="w-5 h-5 text-purple-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-secondary-800">Listen to Report Summary</h3>
+            <p className="text-sm text-secondary-500">Audio narration for visually impaired patients</p>
+          </div>
+        </div>
+        <ListenButton
+          onFetch={async (voice) => {
+            const response = await speechService.getLabReportAudio(id, voice)
+            return response.data
+          }}
+          label="Generate Audio Summary"
+          loadingLabel="Generating audio..."
+        />
       </div>
 
       {/* Error Message */}

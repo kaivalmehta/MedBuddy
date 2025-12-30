@@ -469,6 +469,12 @@ class SuspendUserView(views.APIView):
             
             logger.info(f"Admin {request.user.email} suspended user {user.email}: {reason}")
             
+            # Send suspension email notification
+            try:
+                EmailService.send_account_suspended_email(user.email, user.first_name, user.role, reason)
+            except Exception as e:
+                logger.error(f"Failed to send suspension email: {e}")
+            
             return Response({
                 'message': f'User {user.email} has been suspended',
                 'user_id': str(user.id)
@@ -516,6 +522,12 @@ class SuspendUserView(views.APIView):
             user.save()
             
             logger.info(f"Admin {request.user.email} unsuspended user {user.email}")
+            
+            # Send reactivation email notification
+            try:
+                EmailService.send_account_reactivated_email(user.email, user.first_name, user.role)
+            except Exception as e:
+                logger.error(f"Failed to send reactivation email: {e}")
             
             return Response({
                 'message': f'User {user.email} has been unsuspended and re-verified',

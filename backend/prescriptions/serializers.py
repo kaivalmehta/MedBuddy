@@ -544,6 +544,6 @@ class LaboratorySearchSerializer(serializers.Serializer):
     phone = serializers.CharField()
     services = serializers.ListField()
     is_verified = serializers.BooleanField()
-    home_collection_available = serializers.BooleanField()
+    offers_home_collection = serializers.BooleanField()
     test_count = serializers.IntegerField()
     rating = serializers.FloatField(required=False)

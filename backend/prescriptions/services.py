@@ -4,6 +4,7 @@ import json
 import uuid
 import requests
 import time
+import base64
 from datetime import datetime
 from django.conf import settings
 from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class AzureServices:
     """
     Centralized Azure service integration for MedBuddy.
-    Handles Blob Storage, AI Vision (OCR), and OpenAI (GPT-4o) operations.
+    Handles Blob Storage, AI Vision (OCR), OpenAI (GPT-4o), and Speech operations.
     """
     
     def __init__(self):
@@ -32,6 +33,240 @@ class AzureServices:
             api_version="2024-02-15-preview"
         )
         self.deployment = settings.AZURE_OPENAI_DEPLOYMENT
+        
+        # Azure Speech Services
+        self.speech_key = getattr(settings, 'AZURE_SPEECH_KEY', None)
+        self.speech_region = getattr(settings, 'AZURE_SPEECH_REGION', 'eastus')
+    
+    # ============================================
+    # AZURE SPEECH SERVICES - Text-to-Speech & Speech-to-Text
+    # ============================================
+    
+    def text_to_speech(self, text, voice='en-US-JennyNeural', output_format='audio-16khz-128kbitrate-mono-mp3'):
+        """
+        Convert text to speech using Azure Speech Services.
+        
+        Args:
+            text: Text to convert to speech
+            voice: Voice to use (default: en-US-JennyNeural - friendly female voice)
+                   Other options: en-US-GuyNeural, en-US-AriaNeural, en-IN-NeerjaNeural (Indian English)
+            output_format: Audio format (default: mp3)
+        
+        Returns:
+            tuple: (audio_data as base64 string, content_type)
+        """
+        if not self.speech_key:
+            raise ValueError("Azure Speech Key not configured")
+        
+        # Azure Speech REST API endpoint
+        endpoint = f"https://{self.speech_region}.tts.speech.microsoft.com/cognitiveservices/v1"
+        
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.speech_key,
+            'Content-Type': 'application/ssml+xml',
+            'X-Microsoft-OutputFormat': output_format,
+            'User-Agent': 'MedBuddy'
+        }
+        
+        # SSML for better speech control
+        ssml = f"""
+        <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+            <voice name='{voice}'>
+                <prosody rate='0.95' pitch='0%'>
+                    {self._escape_ssml(text)}
+                </prosody>
+            </voice>
+        </speak>
+        """
+        
+        try:
+            response = requests.post(endpoint, headers=headers, data=ssml.encode('utf-8'))
+            
+            if response.status_code == 200:
+                audio_base64 = base64.b64encode(response.content).decode('utf-8')
+                logger.info(f"Text-to-speech successful, generated {len(response.content)} bytes")
+                return audio_base64, 'audio/mpeg'
+            else:
+                logger.error(f"Text-to-speech failed: {response.status_code} - {response.text}")
+                raise Exception(f"Speech synthesis failed: {response.status_code}")
+                
+        except requests.RequestException as e:
+            logger.error(f"Text-to-speech request error: {e}")
+            raise
+    
+    def _escape_ssml(self, text):
+        """Escape special characters for SSML."""
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        text = text.replace('"', '&quot;')
+        text = text.replace("'", '&apos;')
+        return text
+    
+    def speech_to_text(self, audio_data, language='en-US'):
+        """
+        Convert speech to text using Azure Speech Services.
+        
+        Args:
+            audio_data: Audio file bytes (WAV format preferred)
+            language: Language code (default: en-US)
+        
+        Returns:
+            dict: {text: transcribed text, confidence: confidence score}
+        """
+        if not self.speech_key:
+            raise ValueError("Azure Speech Key not configured")
+        
+        # Azure Speech REST API endpoint for speech-to-text
+        endpoint = f"https://{self.speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+        
+        params = {
+            'language': language,
+            'format': 'detailed'
+        }
+        
+        headers = {
+            'Ocp-Apim-Subscription-Key': self.speech_key,
+            'Content-Type': 'audio/wav',
+            'Accept': 'application/json'
+        }
+        
+        try:
+            response = requests.post(endpoint, params=params, headers=headers, data=audio_data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if result.get('RecognitionStatus') == 'Success':
+                    # Get the best result
+                    nbest = result.get('NBest', [])
+                    if nbest:
+                        best = nbest[0]
+                        logger.info(f"Speech-to-text successful: {best.get('Display', '')[:50]}...")
+                        return {
+                            'text': best.get('Display', ''),
+                            'confidence': best.get('Confidence', 0),
+                            'lexical': best.get('Lexical', ''),
+                            'itn': best.get('ITN', '')
+                        }
+                    return {'text': result.get('DisplayText', ''), 'confidence': 1.0}
+                else:
+                    logger.warning(f"Speech recognition status: {result.get('RecognitionStatus')}")
+                    return {'text': '', 'confidence': 0, 'status': result.get('RecognitionStatus')}
+            else:
+                logger.error(f"Speech-to-text failed: {response.status_code} - {response.text}")
+                raise Exception(f"Speech recognition failed: {response.status_code}")
+                
+        except requests.RequestException as e:
+            logger.error(f"Speech-to-text request error: {e}")
+            raise
+    
+    def generate_prescription_speech_text(self, prescription_data):
+        """
+        Generate a patient-friendly text for prescription to be read aloud.
+        
+        Args:
+            prescription_data: Dict containing prescription details
+        
+        Returns:
+            str: Formatted text optimized for speech
+        """
+        lines = []
+        
+        # Header
+        if prescription_data.get('doctor_name'):
+            lines.append(f"This prescription is from Doctor {prescription_data['doctor_name']}.")
+        
+        if prescription_data.get('date'):
+            lines.append(f"Prescribed on {prescription_data['date']}.")
+        
+        # Diagnosis
+        if prescription_data.get('diagnosis'):
+            lines.append(f"Diagnosis: {prescription_data['diagnosis']}.")
+        
+        # Medications
+        medications = prescription_data.get('medications', [])
+        if medications:
+            lines.append(f"You have been prescribed {len(medications)} medication{'s' if len(medications) > 1 else ''}.")
+            
+            for i, med in enumerate(medications, 1):
+                med_text = f"Medication {i}: {med.get('name', 'Unknown')}."
+                
+                if med.get('dosage'):
+                    med_text += f" Dosage: {med['dosage']}."
+                
+                if med.get('frequency'):
+                    med_text += f" Take it {med['frequency']}."
+                
+                if med.get('duration'):
+                    med_text += f" For {med['duration']}."
+                
+                if med.get('instructions'):
+                    med_text += f" Special instructions: {med['instructions']}."
+                
+                lines.append(med_text)
+        
+        # Instructions
+        if prescription_data.get('instructions'):
+            lines.append(f"Additional instructions: {prescription_data['instructions']}.")
+        
+        # Safety warning
+        if prescription_data.get('safety_score') and prescription_data['safety_score'] < 70:
+            lines.append("Important: This prescription has potential drug interactions. Please consult your doctor or pharmacist.")
+        
+        # Footer
+        lines.append("Please take your medications as prescribed and consult your doctor if you experience any side effects.")
+        
+        return ' '.join(lines)
+    
+    def generate_lab_report_speech_text(self, report_data):
+        """
+        Generate a patient-friendly text for lab report to be read aloud.
+        
+        Args:
+            report_data: Dict containing lab report details
+        
+        Returns:
+            str: Formatted text optimized for speech
+        """
+        lines = []
+        
+        # Header
+        lines.append(f"Lab Report Summary.")
+        
+        if report_data.get('report_type'):
+            lines.append(f"This is a {report_data['report_type'].replace('_', ' ')} report.")
+        
+        if report_data.get('test_date'):
+            lines.append(f"Test conducted on {report_data['test_date']}.")
+        
+        if report_data.get('laboratory_name'):
+            lines.append(f"Performed at {report_data['laboratory_name']}.")
+        
+        # Analysis summary
+        if report_data.get('analysis_summary'):
+            lines.append(f"Summary: {report_data['analysis_summary']}.")
+        
+        # Abnormal values
+        abnormal = report_data.get('abnormal_values', [])
+        if abnormal:
+            lines.append(f"Attention: {len(abnormal)} value{'s are' if len(abnormal) > 1 else ' is'} outside the normal range.")
+            
+            for item in abnormal[:5]:  # Limit to 5 for brevity
+                lines.append(f"{item.get('parameter', 'Unknown')}: {item.get('value', '')} {item.get('unit', '')}. "
+                           f"Normal range is {item.get('normal_range', 'not specified')}. "
+                           f"This is {item.get('status', 'abnormal')}.")
+        else:
+            lines.append("Good news: All your values are within normal range.")
+        
+        # Recommendations
+        if report_data.get('recommendations'):
+            lines.append(f"Recommendations: {report_data['recommendations']}.")
+        
+        # Footer
+        lines.append("Please discuss these results with your doctor for a complete understanding.")
+        
+        return ' '.join(lines)
     
     def upload_prescription(self, file, user_id):
         """Upload prescription image/PDF to Azure Blob Storage."""
@@ -591,3 +826,5 @@ Provide comprehensive safety analysis covering:
         except Exception as e:
             logger.error(f"Translation Error: {e}")
             return content
+
+ 

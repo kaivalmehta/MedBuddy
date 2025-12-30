@@ -286,7 +286,7 @@ export default function PatientOrderTest() {
                           <MapPin className="w-4 h-4" />
                           {lab.city}
                         </span>
-                        {lab.home_collection_available && (
+                        {lab.offers_home_collection && (
                           <span className="flex items-center gap-1 text-green-600">
                             <Home className="w-4 h-4" />
                             Home Collection
@@ -501,11 +501,11 @@ export default function PatientOrderTest() {
                 
                 <button
                   onClick={() => setCollectionType('home_collection')}
-                  disabled={!labDetail?.home_collection_available}
+                  disabled={!labDetail?.offers_home_collection}
                   className={`p-4 rounded-xl border-2 text-left transition ${
                     collectionType === 'home_collection'
                       ? 'border-green-500 bg-green-50'
-                      : labDetail?.home_collection_available
+                      : labDetail?.offers_home_collection
                         ? 'border-gray-200 hover:border-gray-300'
                         : 'border-gray-100 bg-gray-50 opacity-50 cursor-not-allowed'
                   }`}
@@ -513,7 +513,7 @@ export default function PatientOrderTest() {
                   <Home className="w-8 h-8 text-green-600 mb-2" />
                   <p className="font-semibold">Home Collection</p>
                   <p className="text-sm text-gray-500">
-                    {labDetail?.home_collection_available 
+                    {labDetail?.offers_home_collection 
                       ? 'Sample collected at home' 
                       : 'Not available'}
                   </p>

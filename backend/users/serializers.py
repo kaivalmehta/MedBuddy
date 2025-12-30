@@ -224,10 +224,12 @@ class DoctorProfileSerializer(serializers.ModelSerializer):
         model = DoctorProfile
         fields = [
             'id', 'user', 'full_name', 'specialization', 'qualification',
-            'registration_number', 'clinic_name', 'clinic_address', 
-            'clinic_phone', 'is_verified', 'created_at'
+            'registration_number', 'experience_years', 'consultation_fee', 'bio',
+            'clinic_name', 'clinic_address', 'clinic_phone', 
+            'latitude', 'longitude',
+            'is_verified', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'is_verified', 'created_at']
+        read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
     
     def get_is_verified(self, obj):
         # Check both profile verification AND user's professional verification
@@ -242,10 +244,12 @@ class LaboratoryProfileSerializer(serializers.ModelSerializer):
         model = LaboratoryProfile
         fields = [
             'id', 'user', 'name', 'license_number', 'address', 'city',
-            'state', 'zip_code', 'phone', 'services', 'is_verified',
-            'home_collection_available', 'operating_hours', 'created_at'
+            'state', 'zip_code', 'phone', 'accreditation', 'services',
+            'offers_home_collection', 'operating_hours',
+            'latitude', 'longitude',
+            'is_verified', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'is_verified', 'created_at']
+        read_only_fields = ['id', 'is_verified', 'created_at', 'updated_at']
     
     def get_is_verified(self, obj):
         # Check both profile verification AND user's professional verification

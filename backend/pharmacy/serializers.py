@@ -11,7 +11,7 @@ class PharmacySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'license_number', 'address', 'city', 'state',
                   'zip_code', 'latitude', 'longitude', 'phone', 'email', 'website',
                   'operating_hours', 'services', 'is_verified', 'is_active',
-                  'rating', 'total_reviews', 'distance_km', 'created_at']
+                  'rating', 'total_reviews', 'distance_km','latitude', 'longitude', 'created_at']
         read_only_fields = ['id', 'is_verified', 'rating', 'total_reviews']
 
 

@@ -5,7 +5,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { doctorService } from '../../services/professional'
-import { FilePlus, Plus, Trash2, Send, Loader2, CheckCircle, Mail } from 'lucide-react'
+import { FilePlus, Plus, Trash2, Send, Loader2, CheckCircle, Mail, Mic } from 'lucide-react'
+import DictationButton, { DictationTextArea } from '../../components/DictationButton'
 
 export default function CreatePrescription() {
   const navigate = useNavigate()
@@ -189,12 +190,17 @@ export default function CreatePrescription() {
 
         {/* Notes & Options */}
         <div className="card">
-          <h2 className="text-lg font-semibold text-secondary-800 mb-4">Additional Notes</h2>
-          <textarea
+          <h2 className="text-lg font-semibold text-secondary-800 mb-4 flex items-center gap-2">
+            Additional Notes
+            <span className="text-xs font-normal text-purple-600 flex items-center gap-1">
+              <Mic className="w-3 h-3" /> Dictation available
+            </span>
+          </h2>
+          <DictationTextArea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="input-field min-h-[100px]"
-            placeholder="Any additional instructions or notes for the patient..."
+            placeholder="Any additional instructions or notes for the patient... (Type or use voice dictation)"
+            rows={4}
           />
           
           <label className="flex items-center gap-3 mt-4 cursor-pointer">

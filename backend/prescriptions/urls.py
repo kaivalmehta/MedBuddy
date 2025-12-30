@@ -5,6 +5,7 @@
 
 from django.urls import path
 from . import views
+from . import views_speech
 
 urlpatterns = [
     path('', views.PrescriptionListView.as_view(), name='prescription_list'),
@@ -23,4 +24,11 @@ urlpatterns = [
     path('lab-reports/upload/', views.PatientLabReportUploadView.as_view(), name='patient_lab_report_upload'),
     path('lab-reports/<uuid:report_id>/', views.PatientLabReportDetailView.as_view(), name='patient_lab_report_detail'),
     path('lab-reports/<uuid:report_id>/analyze/', views.PatientLabReportAnalyzeView.as_view(), name='patient_lab_report_analyze'),
+    
+    # Speech Services - Text-to-Speech & Speech-to-Text
+    path('speech/voices/', views_speech.AvailableVoicesView.as_view(), name='available_voices'),
+    path('speech/text-to-speech/', views_speech.CustomTextToSpeechView.as_view(), name='custom_tts'),
+    path('speech/speech-to-text/', views_speech.SpeechToTextView.as_view(), name='speech_to_text'),
+    path('<uuid:prescription_id>/speak/', views_speech.PrescriptionTextToSpeechView.as_view(), name='prescription_tts'),
+    path('lab-reports/<uuid:report_id>/speak/', views_speech.LabReportTextToSpeechView.as_view(), name='lab_report_tts'),
 ]

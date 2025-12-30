@@ -89,7 +89,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+# TIME_ZONE = 'UTC'
+TIME_ZONE = 'America/New_York'
 USE_I18N = True
 USE_TZ = True
 
@@ -144,6 +145,10 @@ AZURE_OPENAI_ENDPOINT = os.getenv('AZURE_OPENAI_ENDPOINT')
 AZURE_OPENAI_KEY = os.getenv('AZURE_OPENAI_KEY')
 AZURE_OPENAI_DEPLOYMENT = os.getenv('AZURE_OPENAI_DEPLOYMENT', 'gpt-4o')
 
+# Azure Speech Services
+AZURE_SPEECH_KEY = os.getenv('AZURE_SPEECH_KEY')
+AZURE_SPEECH_REGION = os.getenv('AZURE_SPEECH_REGION', 'eastus')
+
 # API Documentation
 SPECTACULAR_SETTINGS = {
     'TITLE': 'MedBuddy API',
@@ -182,12 +187,12 @@ LOGGING = {
 
 
 # ============================================
-# ADD: Email Configuration
+# Email Configuration
 # ============================================
-# For development - prints to console
+# For development - prints to console (fallback if Azure not configured)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 
-# For production - use SMTP (uncomment and configure)
+# For production with SMTP (alternative to Azure)
 # EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 # EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
 # EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
@@ -199,7 +204,20 @@ DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'MedBuddy <noreply@medbuddy
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 
 # ============================================
+# Azure Communication Services Email
+# ============================================
+# Get these from Azure Portal > Communication Services > Keys
+AZURE_COMMUNICATION_CONNECTION_STRING = os.getenv('AZURE_COMMUNICATION_CONNECTION_STRING')
+# Format: DoNotReply@<your-domain>.azurecomm.net or custom verified domain
+AZURE_EMAIL_SENDER = os.getenv('AZURE_EMAIL_SENDER')
+
+# Admin email for notifications (new verification requests, etc.)
+ADMIN_EMAIL = os.getenv('ADMIN_EMAIL', 'admin@medbuddy.com')
+
+# ============================================
 # ADD: OTP Settings
 # ============================================
 OTP_VALIDITY_MINUTES = 10
 OTP_LENGTH = 6
+
+AZURE_MAPS_KEY = os.getenv('AZURE_MAPS_KEY')

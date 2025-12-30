@@ -138,6 +138,36 @@ class InitiateRegistrationView(views.APIView):
             'expires_in_minutes': 10
         }, status=status.HTTP_200_OK)
 
+        # In InitiateRegistrationView.post(), add after creating the profile:
+
+        # Save location if provided (for professionals)
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+
+        if latitude and longitude:
+            try:
+                from decimal import Decimal
+                lat = Decimal(str(latitude))
+                lng = Decimal(str(longitude))
+                
+                if user.role == 'doctor' and hasattr(user, 'doctor_profile'):
+                    user.doctor_profile.latitude = lat
+                    user.doctor_profile.longitude = lng
+                    user.doctor_profile.save()
+                elif user.role == 'pharmacy':
+                    from pharmacy.models import Pharmacy
+                    pharmacy = Pharmacy.objects.filter(user=user).first()
+                    if pharmacy:
+                        pharmacy.latitude = lat
+                        pharmacy.longitude = lng
+                        pharmacy.save()
+                elif user.role == 'laboratory' and hasattr(user, 'laboratory_profile'):
+                    user.laboratory_profile.latitude = lat
+                    user.laboratory_profile.longitude = lng
+                    user.laboratory_profile.save()
+            except Exception as e:
+                logger.warning(f"Could not save location for user {user.email}: {e}")
+
 
 class VerifyRegistrationOTPView(views.APIView):
     """
@@ -210,6 +240,31 @@ class VerifyRegistrationOTPView(views.APIView):
         
         # Mark pending as verified and delete
         pending.delete()
+        
+        # Send welcome email
+        try:
+            EmailService.send_welcome_email(user.email, user.first_name, user.role)
+        except Exception as e:
+            logger.error(f"Failed to send welcome email: {e}")
+        
+        # Notify admin of new professional registration
+        if user.role in ['doctor', 'pharmacy', 'laboratory']:
+            try:
+                registration_number = ''
+                if user.role == 'doctor':
+                    registration_number = data.get('doctor_profile', {}).get('registration_number', '')
+                elif user.role == 'pharmacy':
+                    registration_number = data.get('pharmacy_profile', {}).get('license_number', '')
+                elif user.role == 'laboratory':
+                    registration_number = data.get('laboratory_profile', {}).get('license_number', '')
+                
+                EmailService.notify_admins_of_new_registration(
+                    f"{user.first_name} {user.last_name}".strip() or user.email,
+                    user.role,
+                    registration_number
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify admin of new registration: {e}")
         
         # Generate tokens
         refresh = RefreshToken.for_user(user)
@@ -727,3 +782,75 @@ class VerifyEmailView(views.APIView):
             'message': 'Email verified successfully',
             'is_email_verified': True
         })
+
+
+class UpdateLocationView(views.APIView):
+    """Update professional's location coordinates"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        address = request.data.get('address', '')
+        
+        if latitude is None or longitude is None:
+            return Response(
+                {'error': 'Latitude and longitude are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from decimal import Decimal
+            lat = Decimal(str(latitude))
+            lng = Decimal(str(longitude))
+        except Exception:
+            return Response(
+                {'error': 'Invalid coordinates'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = request.user
+        updated = False
+        
+        if user.role == 'doctor':
+            profile = getattr(user, 'doctor_profile', None)
+            if profile:
+                profile.latitude = lat
+                profile.longitude = lng
+                if address:
+                    profile.clinic_address = address
+                profile.save()
+                updated = True
+                
+        elif user.role == 'pharmacy':
+            from pharmacy.models import Pharmacy
+            pharmacy = Pharmacy.objects.filter(user=user).first()
+            if pharmacy:
+                pharmacy.latitude = lat
+                pharmacy.longitude = lng
+                if address:
+                    pharmacy.address = address
+                pharmacy.save()
+                updated = True
+                
+        elif user.role == 'laboratory':
+            profile = getattr(user, 'laboratory_profile', None)
+            if profile:
+                profile.latitude = lat
+                profile.longitude = lng
+                if address:
+                    profile.address = address
+                profile.save()
+                updated = True
+        
+        if updated:
+            return Response({
+                'message': 'Location updated successfully',
+                'latitude': str(lat),
+                'longitude': str(lng)
+            })
+        else:
+            return Response(
+                {'error': 'No professional profile found'},
+                status=status.HTTP_404_NOT_FOUND
+            )

@@ -52,4 +52,6 @@ urlpatterns = [
     # ============================================
     path('family-members/', views.FamilyMemberListCreateView.as_view(), name='family_members'),
     path('family-members/<uuid:pk>/', views.FamilyMemberDetailView.as_view(), name='family_member_detail'),
+
+    path('location/update/', views.UpdateLocationView.as_view(), name='update_location'),
 ]

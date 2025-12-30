@@ -97,8 +97,8 @@ export default function ForgotPassword() {
     setError('')
 
     try {
-      const response = await verifyPasswordResetOTP({ email, otp_code: otpCode })
-      setResetToken(response.data.reset_token)
+      await verifyPasswordResetOTP({ email, otp_code: otpCode })
+      setResetToken(otpCode)  // Store the OTP code itself for the next step
       setStep('password')
     } catch (err) {
       setError(err.response?.data?.error || 'Invalid verification code')
@@ -117,9 +117,9 @@ export default function ForgotPassword() {
     try {
       await confirmPasswordReset({
         email,
-        reset_token: resetToken,
+        otp_code: resetToken,
         new_password: data.password,
-        confirm_password: data.password_confirm
+        new_password_confirm: data.password_confirm
       })
       setStep('success')
     } catch (err) {

@@ -3,7 +3,7 @@
 
 from rest_framework import generics, views, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, BasePermission
+from rest_framework.permissions import IsAuthenticated, BasePermission, AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.db.models import Count, Sum, Avg, F, Q
 from django.db.models.functions import Radians, Sin, Cos, ACos
@@ -1257,24 +1257,69 @@ class SalesDashboardView(views.APIView):
 class NearbyPharmaciesView(generics.ListAPIView):
     """Find nearby pharmacies by location"""
     serializer_class = PharmacySerializer
-    permission_classes = []
+    permission_classes = [AllowAny]
+    authentication_classes = []  # No authentication required
     
     def get_queryset(self):
-        lat = float(self.request.query_params.get('lat', 0))
-        lng = float(self.request.query_params.get('lng', 0))
+        lat = self.request.query_params.get('lat')
+        lng = self.request.query_params.get('lng')
         radius_km = float(self.request.query_params.get('radius', 10))
         
-        return Pharmacy.objects.filter(
+        if not lat or not lng:
+            return Pharmacy.objects.none()
+        
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except (ValueError, TypeError):
+            return Pharmacy.objects.none()
+        
+        # Get all active verified pharmacies with location (check both profile and user verification)
+        pharmacies = Pharmacy.objects.filter(
             is_active=True,
             is_verified=True,
-            latitude__isnull=False
-        ).annotate(
-            distance_km=6371 * ACos(
-                Cos(Radians(lat)) * Cos(Radians('latitude')) *
-                Cos(Radians('longitude') - Radians(lng)) +
-                Sin(Radians(lat)) * Sin(Radians('latitude'))
-            )
-        ).filter(distance_km__lte=radius_km).order_by('distance_km')
+            user__is_professional_verified=True,
+            latitude__isnull=False,
+            longitude__isnull=False
+        ).select_related('user')
+        
+        # Calculate distance in Python to avoid DecimalField/FloatField issues
+        from math import radians, sin, cos, sqrt, atan2
+        
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371  # Earth's radius in km
+            lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, float(lat2), float(lon2)])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * atan2(sqrt(a), sqrt(1-a))
+            return R * c
+        
+        # Filter and sort by distance
+        nearby = []
+        for pharmacy in pharmacies:
+            distance = haversine(lat, lng, pharmacy.latitude, pharmacy.longitude)
+            if distance <= radius_km:
+                pharmacy.distance_km = round(distance, 2)
+                nearby.append(pharmacy)
+        
+        # Sort by distance
+        nearby.sort(key=lambda x: x.distance_km)
+        
+        return nearby
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        
+        # Manual serialization to include distance
+        data = []
+        for pharmacy in queryset[:50]:  # Limit to 50 results
+            serializer = self.get_serializer(pharmacy)
+            pharmacy_data = serializer.data
+            pharmacy_data['distance_km'] = getattr(pharmacy, 'distance_km', None)
+            data.append(pharmacy_data)
+        
+        return Response(data)
 
 
 class PharmacyReviewView(generics.ListCreateAPIView):

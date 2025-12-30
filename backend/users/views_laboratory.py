@@ -105,7 +105,7 @@ class LaboratorySearchView(views.APIView):
         
         # Filter by home collection if requested
         if home_collection:
-            labs = labs.filter(home_collection_available=True)
+            labs = labs.filter(offers_home_collection=True)
         
         # Build results
         results = []
@@ -125,7 +125,7 @@ class LaboratorySearchView(views.APIView):
                 'phone': lab.phone,
                 'services': lab.services or [],
                 'is_verified': lab.is_verified,
-                'home_collection_available': lab.home_collection_available,
+                'offers_home_collection': lab.offers_home_collection,
                 'test_count': test_count,
             })
         
@@ -169,7 +169,7 @@ class LaboratoryDetailView(views.APIView):
             'services': lab_profile.services or [],
             'operating_hours': lab_profile.operating_hours or {},
             'is_verified': lab_profile.is_verified,
-            'home_collection_available': lab_profile.home_collection_available,
+            'offers_home_collection': lab_profile.offers_home_collection,
             'test_catalog': categories,
             'test_count': tests.count()
         })

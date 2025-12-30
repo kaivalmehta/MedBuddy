@@ -310,11 +310,18 @@ class DoctorProfile(models.Model):
     specialization = models.CharField(max_length=100)
     qualification = models.CharField(max_length=200)
     registration_number = models.CharField(max_length=100, unique=True)
+    experience_years = models.PositiveIntegerField(null=True, blank=True)
+    consultation_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    bio = models.TextField(blank=True)
     
     # Clinic/Hospital details
     clinic_name = models.CharField(max_length=200, blank=True)
     clinic_address = models.TextField(blank=True)
     clinic_phone = models.CharField(max_length=20, blank=True)
+    
+    # Location for "Find Nearby"
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
     
     # Verification
     is_verified = models.BooleanField(default=False)
@@ -329,7 +336,6 @@ class DoctorProfile(models.Model):
     def __str__(self):
         return f"Dr. {self.full_name} - {self.specialization}"
 
-
 class LaboratoryProfile(models.Model):
     """Profile for Laboratory users"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -342,13 +348,18 @@ class LaboratoryProfile(models.Model):
     state = models.CharField(max_length=100)
     zip_code = models.CharField(max_length=20)
     phone = models.CharField(max_length=20)
+    accreditation = models.CharField(max_length=100, blank=True)
     
-    # Services offered
-    services = models.JSONField(default=list, blank=True)  # ['blood_test', 'xray', 'mri', etc.]
-    home_collection_available = models.BooleanField(default=False)  # Lab offers home collection
+    # Location
+    latitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=10, decimal_places=7, null=True, blank=True)
+    
+    # Services
+    services = models.JSONField(default=list, blank=True)
+    offers_home_collection = models.BooleanField(default=False)  # THIS IS CORRECT - matches DB
     
     is_verified = models.BooleanField(default=False)
-    verification_document = models.URLField(blank=True)  # License PDF URL
+    verification_document = models.URLField(blank=True)
     operating_hours = models.JSONField(default=dict, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
@@ -356,11 +367,7 @@ class LaboratoryProfile(models.Model):
     
     class Meta:
         db_table = 'laboratory_profiles'
-    
-    def __str__(self):
-        return self.name
-
-
+           
 class PatientAccessToken(models.Model):
     """OTP/PIN system for doctors to access patient history or send prescriptions"""
     PURPOSE_CHOICES = [

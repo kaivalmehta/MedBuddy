@@ -35,6 +35,7 @@ import PharmacyPatientAccess from './pages/pharmacy/PharmacyPatientAccess'
 import PharmacyPatientHistory from './pages/pharmacy/PharmacyPatientHistory'
 import SalesDashboard from './pages/pharmacy/SalesDashboard'
 import Inventory from './pages/pharmacy/Inventory'
+import PharmacyProfile from './pages/pharmacy/PharmacyProfile'
 
 // Doctor Pages
 import DoctorDashboard from './pages/doctor/DoctorDashboard'
@@ -65,6 +66,8 @@ import AdminSuspensions from './pages/admin/AdminSuspensions'
 
 // Shared Pages
 import CriticalAlerts from './pages/shared/CriticalAlerts'
+
+import FindNearby from './pages/patient/FindNearby'
 
 // Loading component
 const LoadingScreen = () => (
@@ -143,6 +146,7 @@ export default function App() {
         <Route path="/lab-orders" element={<PatientTestOrders />} />
         <Route path="/order-test" element={<PatientOrderTest />} />
         <Route path="/alerts" element={<CriticalAlerts userRole="patient" />} />
+        <Route path="/find-nearby" element={<FindNearby />} />
       </Route>
       
       {/* Pharmacy Routes */}
@@ -154,6 +158,7 @@ export default function App() {
         <Route path="/pharmacy/sent" element={<PharmacySentHistory />} />
         <Route path="/pharmacy/sales" element={<SalesDashboard />} />
         <Route path="/pharmacy/inventory" element={<Inventory />} />
+        <Route path="/pharmacy/profile" element={<PharmacyProfile />} />
       </Route>
       
       {/* Doctor Routes */}
