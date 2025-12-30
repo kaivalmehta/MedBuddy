@@ -8,10 +8,11 @@ import {
   Building, Calendar, ChevronDown, ChevronUp, Bell, CheckCircle,
   Info, AlertCircle, XCircle, Loader2, MapPin, Plus, Minus,
   Sun, Sunrise, Sunset, Moon, X, Heart, Apple, Baby, Activity,
-  AlertOctagon, ThumbsUp, Stethoscope, Utensils, Volume2
+  AlertOctagon, ThumbsUp, Stethoscope, Utensils, Volume2, Globe
 } from 'lucide-react'
 import { prescriptionService, reminderService } from '../../services/prescriptions'
 import { speechService } from '../../services/speech'
+import translationService from '../../services/translationService'
 import AudioPlayer, { ListenButton } from '../../components/AudioPlayer'
 import { format } from 'date-fns'
 
@@ -24,6 +25,13 @@ export default function PrescriptionDetail() {
   const [showPharmacyModal, setShowPharmacyModal] = useState(false)
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedDrugForReminder, setSelectedDrugForReminder] = useState(null)
+  
+  // Translation state
+  const [selectedLanguage, setSelectedLanguage] = useState('')
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [translationResult, setTranslationResult] = useState(null)
+  const [showTranslationModal, setShowTranslationModal] = useState(false)
+  const [translationError, setTranslationError] = useState(null)
 
   const { data: prescription, isLoading, error } = useQuery({
     queryKey: ['prescription', id],
@@ -241,6 +249,127 @@ export default function PrescriptionDetail() {
               label="Generate Audio"
               loadingLabel="Generating audio narration..."
             />
+          </div>
+
+          {/* Translate Prescription - Multi-language Support */}
+          <div className="card bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                <Globe className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-secondary-800">Translate Prescription</h3>
+                <p className="text-sm text-secondary-500">Translate to 100+ languages for better understanding</p>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-secondary-700 mb-1">Select Language</label>
+                <select
+                  value={selectedLanguage}
+                  onChange={(e) => setSelectedLanguage(e.target.value)}
+                  className="input-field"
+                >
+                  <option value="">-- Choose a language --</option>
+                  <optgroup label="Popular Languages">
+                    <option value="es">🇪🇸 Spanish (Español)</option>
+                    <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
+                    <option value="zh-Hans">🇨🇳 Chinese Simplified (简体中文)</option>
+                    <option value="ar">🇸🇦 Arabic (العربية)</option>
+                    <option value="fr">🇫🇷 French (Français)</option>
+                    <option value="pt">🇧🇷 Portuguese (Português)</option>
+                    <option value="bn">🇧🇩 Bengali (বাংলা)</option>
+                    <option value="ru">🇷🇺 Russian (Русский)</option>
+                    <option value="ja">🇯🇵 Japanese (日本語)</option>
+                    <option value="de">🇩🇪 German (Deutsch)</option>
+                  </optgroup>
+                  <optgroup label="Indian Languages">
+                    <option value="ta">Tamil (தமிழ்)</option>
+                    <option value="te">Telugu (తెలుగు)</option>
+                    <option value="mr">Marathi (मराठी)</option>
+                    <option value="gu">Gujarati (ગુજરાતી)</option>
+                    <option value="kn">Kannada (ಕನ್ನಡ)</option>
+                    <option value="ml">Malayalam (മലയാളം)</option>
+                    <option value="pa">Punjabi (ਪੰਜਾਬੀ)</option>
+                    <option value="ur">Urdu (اردو)</option>
+                  </optgroup>
+                  <optgroup label="European Languages">
+                    <option value="it">Italian (Italiano)</option>
+                    <option value="nl">Dutch (Nederlands)</option>
+                    <option value="pl">Polish (Polski)</option>
+                    <option value="uk">Ukrainian (Українська)</option>
+                    <option value="el">Greek (Ελληνικά)</option>
+                    <option value="tr">Turkish (Türkçe)</option>
+                    <option value="sv">Swedish (Svenska)</option>
+                  </optgroup>
+                  <optgroup label="Asian Languages">
+                    <option value="ko">Korean (한국어)</option>
+                    <option value="th">Thai (ไทย)</option>
+                    <option value="vi">Vietnamese (Tiếng Việt)</option>
+                    <option value="id">Indonesian (Bahasa Indonesia)</option>
+                    <option value="ms">Malay (Bahasa Melayu)</option>
+                    <option value="fil">Filipino</option>
+                  </optgroup>
+                  <optgroup label="Middle Eastern">
+                    <option value="he">Hebrew (עברית)</option>
+                    <option value="fa">Persian (فارسی)</option>
+                  </optgroup>
+                  <optgroup label="African Languages">
+                    <option value="sw">Swahili (Kiswahili)</option>
+                    <option value="am">Amharic (አማርኛ)</option>
+                    <option value="af">Afrikaans</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {translationError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-rose-700 text-sm flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  {translationError}
+                </div>
+              )}
+
+              <button
+                onClick={async () => {
+                  if (!selectedLanguage) {
+                    setTranslationError('Please select a language')
+                    return
+                  }
+                  setTranslationError(null)
+                  setIsTranslating(true)
+                  try {
+                    const result = await translationService.translatePrescription(id, selectedLanguage)
+                    if (result.success) {
+                      setTranslationResult(result)
+                      setShowTranslationModal(true)
+                    } else {
+                      setTranslationError(result.error || 'Translation failed')
+                    }
+                  } catch (error) {
+                    setTranslationError(error.response?.data?.error || 'Failed to translate. Please try again.')
+                  }
+                  setIsTranslating(false)
+                }}
+                disabled={isTranslating || !selectedLanguage}
+                className="w-full btn-primary flex items-center justify-center gap-2 py-3"
+              >
+                {isTranslating ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Translating...</>
+                ) : (
+                  <><Globe className="w-5 h-5" /> Translate Prescription</>
+                )}
+              </button>
+
+              {translationResult && (
+                <button
+                  onClick={() => setShowTranslationModal(true)}
+                  className="w-full btn-secondary flex items-center justify-center gap-2"
+                >
+                  <CheckCircle className="w-4 h-4 text-emerald-500" /> View Last Translation
+                </button>
+              )}
+            </div>
           </div>
           
 
@@ -468,6 +597,14 @@ export default function PrescriptionDetail() {
         )}
       </AnimatePresence>
       {showPharmacyModal && <PharmacyModal onClose={() => setShowPharmacyModal(false)} />}
+      
+      {/* Translation Modal */}
+      {showTranslationModal && translationResult && (
+        <TranslationResultModal
+          result={translationResult}
+          onClose={() => setShowTranslationModal(false)}
+        />
+      )}
     </div>
   )
 }
@@ -812,5 +949,260 @@ function PharmacyModal({ onClose }) {
         </div>
       </motion.div>
     </div>
+  )
+}
+
+function TranslationResultModal({ result, onClose }) {
+  const [activeTab, setActiveTab] = useState('content')
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = (text) => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleSpeak = (text, lang) => {
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = lang || 'en'
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const isRTL = result.is_rtl
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.95, y: 20 }}
+        className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-cyan-600 p-6 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                <Globe className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">Translation Complete</h2>
+                <p className="text-blue-100 text-sm">
+                  Translated to {result.target_language_name || result.target_language}
+                  {isRTL && <span className="ml-2 px-2 py-0.5 bg-white/20 rounded text-xs">RTL</span>}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center hover:bg-white/30 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b bg-gray-50">
+          {['content', 'medications', 'safety'].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-3 font-medium text-sm capitalize transition ${
+                activeTab === tab
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-white'
+                  : 'text-secondary-500 hover:text-secondary-700'
+              }`}
+            >
+              {tab === 'content' && '📄 Main Content'}
+              {tab === 'medications' && `💊 Medications (${result.translated_drugs?.length || 0})`}
+              {tab === 'safety' && '🛡️ Safety Info'}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="p-6 max-h-[60vh] overflow-y-auto">
+          {activeTab === 'content' && (
+            <div className="space-y-6">
+              {/* Doctor & Clinic */}
+              {(result.translated_prescription?.doctor_name_translated || result.translated_prescription?.clinic_name_translated) && (
+                <div className="grid grid-cols-2 gap-4">
+                  {result.translated_prescription?.doctor_name_translated && (
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <p className="text-xs text-secondary-500 uppercase font-medium mb-1">Doctor</p>
+                      <p className="text-secondary-800">{result.translated_prescription.doctor_name_translated}</p>
+                    </div>
+                  )}
+                  {result.translated_prescription?.clinic_name_translated && (
+                    <div className="p-4 bg-gray-50 rounded-xl">
+                      <p className="text-xs text-secondary-500 uppercase font-medium mb-1">Clinic</p>
+                      <p className="text-secondary-800">{result.translated_prescription.clinic_name_translated}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Safety Summary */}
+              {result.translated_prescription?.safety_summary_translated && (
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs text-amber-600 uppercase font-medium mb-2 flex items-center gap-1">
+                    <Shield className="w-4 h-4" /> Safety Summary
+                  </p>
+                  <p className={`text-secondary-800 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                    {result.translated_prescription.safety_summary_translated}
+                  </p>
+                </div>
+              )}
+
+              {/* OCR Text */}
+              {result.translated_prescription?.ocr_raw_text_translated && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium text-secondary-700">Prescription Text</p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSpeak(result.translated_prescription.ocr_raw_text_translated, result.target_language)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="Listen"
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleCopy(result.translated_prescription.ocr_raw_text_translated)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        title="Copy"
+                      >
+                        {copied ? <CheckCircle className="w-4 h-4 text-emerald-500" /> : <Info className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className={`p-4 bg-blue-50 border border-blue-200 rounded-xl ${isRTL ? 'text-right' : ''}`}
+                    dir={isRTL ? 'rtl' : 'ltr'}
+                  >
+                    <p className="text-secondary-800 whitespace-pre-wrap">
+                      {result.translated_prescription.ocr_raw_text_translated}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'medications' && (
+            <div className="space-y-4">
+              {result.translated_drugs?.length > 0 ? (
+                result.translated_drugs.map((drug, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-xl overflow-hidden">
+                    <div className="bg-gray-50 p-4 border-b flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                        <Pill className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-secondary-800">{drug.drug_name}</h4>
+                        {drug.drug_name_translated && drug.drug_name_translated !== drug.drug_name && (
+                          <p className={`text-sm text-blue-600 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                            {drug.drug_name_translated}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-4 grid grid-cols-2 gap-4">
+                      {drug.dosage && (
+                        <div>
+                          <p className="text-xs text-secondary-500 uppercase">Dosage</p>
+                          <p className="text-secondary-800">{drug.dosage}</p>
+                          {drug.dosage_translated && (
+                            <p className={`text-sm text-blue-600 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                              {drug.dosage_translated}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {drug.frequency && (
+                        <div>
+                          <p className="text-xs text-secondary-500 uppercase">Frequency</p>
+                          <p className="text-secondary-800">{drug.frequency}</p>
+                          {drug.frequency_translated && (
+                            <p className={`text-sm text-blue-600 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                              {drug.frequency_translated}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {drug.instructions && (
+                        <div className="col-span-2">
+                          <p className="text-xs text-secondary-500 uppercase">Instructions</p>
+                          <p className="text-secondary-800">{drug.instructions}</p>
+                          {drug.instructions_translated && (
+                            <p className={`text-sm text-blue-600 mt-1 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                              {drug.instructions_translated}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-secondary-500">
+                  <Pill className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>No medications to translate</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'safety' && (
+            <div className="space-y-4">
+              {result.translated_safety_report ? (
+                <>
+                  {result.translated_safety_report.overall_summary_translated && (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                      <p className="text-xs text-amber-600 uppercase font-medium mb-2">Overall Summary</p>
+                      <p className={`text-secondary-800 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                        {result.translated_safety_report.overall_summary_translated}
+                      </p>
+                    </div>
+                  )}
+                  {result.translated_safety_report.recommendations_translated && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                      <p className="text-xs text-blue-600 uppercase font-medium mb-2">Recommendations</p>
+                      <p className={`text-secondary-800 ${isRTL ? 'text-right' : ''}`} dir={isRTL ? 'rtl' : 'ltr'}>
+                        {result.translated_safety_report.recommendations_translated}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8 text-secondary-500">
+                  <Shield className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                  <p>No safety information available</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
+          <p className="text-xs text-secondary-500 flex items-center gap-1">
+            <Info className="w-3 h-3" />
+            Powered by Azure AI Translator • Healthcare optimized
+          </p>
+          <button onClick={onClose} className="btn-primary">
+            Close
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }

@@ -10165,3 +10165,107 @@ Response headers:
     'X-Cache': 'REDACTED'
     'Accept-Ranges': 'REDACTED'
 INFO 2025-12-29 23:06:12,265 azure_email_service 55331 123145525145600 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: a85d0dec-38bb-40fd-b539-731e25e45bdb
+WARNING 2025-12-29 23:39:14,288 log 55331 123145525145600 Unauthorized: /api/prescriptions/dashboard/
+WARNING 2025-12-29 23:39:14,298 log 55331 123145541935104 Unauthorized: /api/prescriptions/reminders/
+INFO 2025-12-30 00:44:08,634 autoreload 55331 4762969600 /Users/kashishkhatri/Desktop/medbuddy/backend/medbuddy_api/settings.py changed, reloading.
+INFO 2025-12-30 00:44:11,711 autoreload 59030 4802946560 Watching for file changes with StatReloader
+INFO 2025-12-30 00:44:23,869 autoreload 59030 4802946560 /Users/kashishkhatri/Desktop/medbuddy/backend/medbuddy_api/urls.py changed, reloading.
+INFO 2025-12-30 00:44:24,919 autoreload 59045 4617373184 Watching for file changes with StatReloader
+WARNING 2025-12-30 00:48:01,726 azure_translator_service 59187 4366083584 Azure Translator key not configured. Translation features will be limited.
+INFO 2025-12-30 00:51:21,834 autoreload 59298 4731627008 Watching for file changes with StatReloader
+WARNING 2025-12-30 00:51:32,101 log 59298 123145571528704 Unauthorized: /api/prescriptions/reminders/
+WARNING 2025-12-30 00:51:32,115 log 59298 123145554739200 Unauthorized: /api/prescriptions/dashboard/
+WARNING 2025-12-30 00:51:32,237 log 59298 123145571528704 Unauthorized: /api/auth/token/refresh/
+WARNING 2025-12-30 00:51:32,238 log 59298 123145554739200 Unauthorized: /api/auth/token/refresh/
+WARNING 2025-12-30 00:51:35,154 log 59298 123145554739200 Unauthorized: /api/auth/logout/
+WARNING 2025-12-30 00:51:35,163 log 59298 123145554739200 Unauthorized: /api/auth/token/refresh/
+INFO 2025-12-30 00:51:44,942 azure_email_service 59298 123145554739200 Azure Email client initialized successfully
+INFO 2025-12-30 00:51:44,946 _universal 59298 123145554739200 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '5335'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '9f7741b4-e543-11f0-9ce2-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2025-12-30 00:51:45,929 _universal 59298 123145554739200 Response status: 202
+Response headers:
+    'Date': 'Tue, 30 Dec 2025 05:51:45 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2025-12-30 00:51:45,954 _universal 59298 123145588318208 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/34eb647a-08a0-4e26-8bf3-05f9f0c00617?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '9f7741b4-e543-11f0-9ce2-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-30 00:51:46,100 _universal 59298 123145588318208 Response status: 200
+Response headers:
+    'Date': 'Tue, 30 Dec 2025 05:51:46 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2025-12-30 00:51:49,110 _universal 59298 123145588318208 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/34eb647a-08a0-4e26-8bf3-05f9f0c00617?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '9f7741b4-e543-11f0-9ce2-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-30 00:51:49,215 _universal 59298 123145588318208 Response status: 200
+Response headers:
+    'Date': 'Tue, 30 Dec 2025 05:51:49 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2025-12-30 00:51:49,228 azure_email_service 59298 123145554739200 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: 34eb647a-08a0-4e26-8bf3-05f9f0c00617
+WARNING 2025-12-30 00:52:00,572 log 59298 123145554739200 Bad Request: /api/auth/login/verify/
+WARNING 2025-12-30 01:10:54,042 log 59298 123145554739200 Unauthorized: /api/prescriptions/5295bf11-79e0-4854-8acc-bb428cd857a0/
+WARNING 2025-12-30 01:12:29,427 log 59298 123145605107712 Unauthorized: /api/doctor/profile/
+WARNING 2025-12-30 01:12:29,430 log 59298 123145621897216 Unauthorized: /api/doctor/dashboard/
+WARNING 2025-12-30 01:12:29,474 log 59298 123145655476224 Unauthorized: /api/doctor/profile/
+WARNING 2025-12-30 01:12:29,478 log 59298 123145672265728 Unauthorized: /api/doctor/dashboard/
+WARNING 2025-12-30 01:12:52,518 log 59298 123145554739200 Unauthorized: /api/translate/prescription/5295bf11-79e0-4854-8acc-bb428cd857a0/
+WARNING 2025-12-30 01:12:53,804 log 59298 123145554739200 Unauthorized: /api/translate/prescription/5295bf11-79e0-4854-8acc-bb428cd857a0/
+INFO 2025-12-30 01:13:41,819 autoreload 59945 4631619072 Watching for file changes with StatReloader
+WARNING 2025-12-30 01:14:11,069 log 59945 123145410154496 Unauthorized: /api/translate/prescription/5295bf11-79e0-4854-8acc-bb428cd857a0/
+ERROR 2025-12-30 01:16:08,936 azure_translator_service 59945 123145426944000 Translation error: 400 Client Error: Bad Request for url: https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=es&category=health
+ERROR 2025-12-30 01:16:08,941 log 59945 123145426944000 Internal Server Error: /api/translate/prescription/5295bf11-79e0-4854-8acc-bb428cd857a0/
+INFO 2025-12-30 01:18:14,121 autoreload 59945 4631619072 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/azure_translator_service.py changed, reloading.
+INFO 2025-12-30 01:18:15,926 autoreload 60171 4624537088 Watching for file changes with StatReloader

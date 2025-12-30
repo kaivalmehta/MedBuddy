@@ -221,3 +221,10 @@ OTP_VALIDITY_MINUTES = 10
 OTP_LENGTH = 6
 
 AZURE_MAPS_KEY = os.getenv('AZURE_MAPS_KEY')
+
+# ============================================
+# Azure Translator Configuration
+# ============================================
+AZURE_TRANSLATOR_KEY = os.getenv('AZURE_TRANSLATOR_KEY')
+AZURE_TRANSLATOR_ENDPOINT = os.getenv('AZURE_TRANSLATOR_ENDPOINT', 'https://api.cognitive.microsofttranslator.com')
+AZURE_TRANSLATOR_REGION = os.getenv('AZURE_TRANSLATOR_REGION', 'eastus')

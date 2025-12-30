@@ -2,6 +2,7 @@
 
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { TranslationProvider } from './context/TranslationContext'
 
 // Layouts
 import MainLayout from './layouts/MainLayout'
@@ -11,6 +12,9 @@ import AuthLayout from './layouts/AuthLayout'
 import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
 import ForgotPassword from './pages/auth/ForgotPassword'
+
+// Translation Page
+import { TranslationPage } from './components/Translation'
 
 // Patient Pages
 import Dashboard from './pages/patient/Dashboard'
@@ -118,36 +122,38 @@ export default function App() {
   if (loading) return <LoadingScreen />
   
   return (
-    <Routes>
-      {/* Auth Routes */}
-      <Route path="/login" element={
-        user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <AuthLayout><Login /></AuthLayout>
-      } />
-      <Route path="/register" element={
-        user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <Register />
-      } />
-      <Route path="/forgot-password" element={
-        user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <ForgotPassword />
-      } />
-      
-      {/* Patient Routes */}
-      <Route element={<ProtectedRoute allowedRoles={['patient']}><MainLayout /></ProtectedRoute>}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/upload" element={<UploadPrescription />} />
-        <Route path="/prescriptions" element={<PrescriptionHistory />} />
-        <Route path="/prescriptions/:id" element={<PrescriptionDetail />} />
-        <Route path="/reports" element={<LabReports />} />
-        <Route path="/reports/:id" element={<LabReportDetail />} />
-        <Route path="/health-profile" element={<HealthProfile />} />
-        <Route path="/family" element={<FamilyMembers />} />
-        <Route path="/reminders" element={<Reminders />} />
-        <Route path="/pharmacies" element={<FindPharmacy />} />
-        <Route path="/orders" element={<MyOrders />} />
-        <Route path="/lab-orders" element={<PatientTestOrders />} />
-        <Route path="/order-test" element={<PatientOrderTest />} />
-        <Route path="/alerts" element={<CriticalAlerts userRole="patient" />} />
-        <Route path="/find-nearby" element={<FindNearby />} />
-      </Route>
+    <TranslationProvider>
+      <Routes>
+        {/* Auth Routes */}
+        <Route path="/login" element={
+          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <AuthLayout><Login /></AuthLayout>
+        } />
+        <Route path="/register" element={
+          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <Register />
+        } />
+        <Route path="/forgot-password" element={
+          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <ForgotPassword />
+        } />
+        
+        {/* Patient Routes */}
+        <Route element={<ProtectedRoute allowedRoles={['patient']}><MainLayout /></ProtectedRoute>}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/upload" element={<UploadPrescription />} />
+          <Route path="/prescriptions" element={<PrescriptionHistory />} />
+          <Route path="/prescriptions/:id" element={<PrescriptionDetail />} />
+          <Route path="/reports" element={<LabReports />} />
+          <Route path="/reports/:id" element={<LabReportDetail />} />
+          <Route path="/health-profile" element={<HealthProfile />} />
+          <Route path="/family" element={<FamilyMembers />} />
+          <Route path="/reminders" element={<Reminders />} />
+          <Route path="/pharmacies" element={<FindPharmacy />} />
+          <Route path="/orders" element={<MyOrders />} />
+          <Route path="/lab-orders" element={<PatientTestOrders />} />
+          <Route path="/order-test" element={<PatientOrderTest />} />
+          <Route path="/alerts" element={<CriticalAlerts userRole="patient" />} />
+          <Route path="/find-nearby" element={<FindNearby />} />
+          <Route path="/translate" element={<TranslationPage />} />
+        </Route>
       
       {/* Pharmacy Routes */}
       <Route element={<ProtectedRoute allowedRoles={['pharmacy']}><MainLayout /></ProtectedRoute>}>
@@ -205,5 +211,6 @@ export default function App() {
         user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <Navigate to="/login" replace />
       } />
     </Routes>
+    </TranslationProvider>
   )
 }

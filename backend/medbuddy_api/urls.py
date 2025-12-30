@@ -62,15 +62,9 @@ urlpatterns = [
     # LOCATION/MAPS APIs
     # ============================================
     path('api/location/', include('prescriptions.urls_maps')),
+    
+    # ============================================
+    # TRANSLATION APIs (Azure Translator)
+    # ============================================
+    path('api/translate/', include('prescriptions.urls_translator')),
 ]
-
-
-
-
-
-
-
-
-
-
-

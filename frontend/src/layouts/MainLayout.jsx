@@ -9,9 +9,9 @@ import {
   Heart, Home, Upload, FileText, User, Users, Bell, MapPin,
   ShoppingBag, LayoutDashboard, Package, Boxes, Menu, X, LogOut,
   ChevronRight, Stethoscope, FlaskConical, UserSearch,
-  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp,Building2,
-  
+  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp, Building2, Globe
 } from 'lucide-react'
+import { LanguageSelector } from '../components/Translation'
 
 // Navigation items for each role
 const patientNav = [
@@ -24,6 +24,7 @@ const patientNav = [
   { path: '/alerts', icon: Bell, label: 'Health Alerts', highlight: true },
   { path: '/reminders', icon: Bell, label: 'Reminders' },
   { path: '/orders', icon: ShoppingBag, label: 'My Orders' },
+  { path: '/translate', icon: Globe, label: 'Translate', highlight: true },
   { divider: true },
   { path: '/health-profile', icon: User, label: 'Health Profile' },
   { path: '/family', icon: Users, label: 'Family Members' },
@@ -225,6 +226,11 @@ export default function MainLayout() {
               <h1 className="text-xl font-display font-semibold text-secondary-800">
                 {navItems.find(n => n.path === location.pathname)?.label || 'Dashboard'}
               </h1>
+            </div>
+
+            {/* Language Selector */}
+            <div className="flex items-center gap-4">
+              <LanguageSelector variant="minimal" />
             </div>
           </div>
         </header>
