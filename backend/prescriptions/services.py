@@ -247,21 +247,36 @@ class AzureServices:
         if report_data.get('analysis_summary'):
             lines.append(f"Summary: {report_data['analysis_summary']}.")
         
-        # Abnormal values
+        # Abnormal values - handle different formats
         abnormal = report_data.get('abnormal_values', [])
         if abnormal:
+            # Ensure it's a list
+            if not isinstance(abnormal, list):
+                abnormal = [abnormal] if abnormal else []
+            
             lines.append(f"Attention: {len(abnormal)} value{'s are' if len(abnormal) > 1 else ' is'} outside the normal range.")
             
             for item in abnormal[:5]:  # Limit to 5 for brevity
-                lines.append(f"{item.get('parameter', 'Unknown')}: {item.get('value', '')} {item.get('unit', '')}. "
-                           f"Normal range is {item.get('normal_range', 'not specified')}. "
-                           f"This is {item.get('status', 'abnormal')}.")
+                # Handle different formats: dict, string, or other
+                if isinstance(item, dict):
+                    lines.append(f"{item.get('parameter', item.get('test_name', 'Unknown'))}: "
+                               f"{item.get('value', item.get('measured_value', ''))} {item.get('unit', '')}. "
+                               f"Normal range is {item.get('normal_range', 'not specified')}. "
+                               f"This is {item.get('status', 'abnormal')}.")
+                elif isinstance(item, str):
+                    lines.append(f"Abnormal finding: {item}.")
+                else:
+                    lines.append(f"Abnormal value noted: {str(item)}.")
         else:
             lines.append("Good news: All your values are within normal range.")
         
         # Recommendations
         if report_data.get('recommendations'):
-            lines.append(f"Recommendations: {report_data['recommendations']}.")
+            recs = report_data['recommendations']
+            # Handle recommendations as list or string
+            if isinstance(recs, list):
+                recs = '. '.join(recs)
+            lines.append(f"Recommendations: {recs}.")
         
         # Footer
         lines.append("Please discuss these results with your doctor for a complete understanding.")
@@ -826,5 +841,3 @@ Provide comprehensive safety analysis covering:
         except Exception as e:
             logger.error(f"Translation Error: {e}")
             return content
-
- 

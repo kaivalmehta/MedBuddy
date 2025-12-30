@@ -69,6 +69,9 @@ class AzureEmailService:
             import re
             text_content = re.sub('<[^<]+?>', '', html_content)
         
+        # Print to console for testing/debugging
+        cls._print_email_to_console(to_email, subject, text_content)
+        
         client = cls.get_client()
         sender_email = getattr(settings, 'AZURE_EMAIL_SENDER', None)
         
@@ -76,6 +79,41 @@ class AzureEmailService:
             return cls._send_via_azure(client, sender_email, to_email, subject, html_content, text_content)
         else:
             return cls._send_via_django(to_email, subject, html_content, text_content)
+    
+    @classmethod
+    def _print_email_to_console(cls, to_email, subject, text_content):
+        """Print email details to console for testing/debugging"""
+        # ANSI color codes for visibility
+        BOLD = '\033[1m'
+        GREEN = '\033[92m'
+        BLUE = '\033[94m'
+        YELLOW = '\033[93m'
+        CYAN = '\033[96m'
+        RED = '\033[91m'
+        RESET = '\033[0m'
+        
+        print("\n")
+        print(f"{RED}{'#'*80}{RESET}")
+        print(f"{RED}#{'':^78}#{RESET}")
+        print(f"{RED}#{GREEN}{BOLD}{'📧 EMAIL SENT - DEBUG LOG':^78}{RESET}{RED}#{RESET}")
+        print(f"{RED}#{'':^78}#{RESET}")
+        print(f"{RED}{'#'*80}{RESET}")
+        print()
+        print(f"{YELLOW}{'─'*80}{RESET}")
+        print(f"{BOLD}{CYAN}TO:{RESET}      {to_email}")
+        print(f"{BOLD}{CYAN}SUBJECT:{RESET} {subject}")
+        print(f"{BOLD}{CYAN}TIME:{RESET}    {format_nyc_datetime()}")
+        print(f"{YELLOW}{'─'*80}{RESET}")
+        print()
+        print(f"{GREEN}{BOLD}EMAIL CONTENT:{RESET}")
+        print(f"{YELLOW}{'─'*80}{RESET}")
+        print(text_content)
+        print(f"{YELLOW}{'─'*80}{RESET}")
+        print(f"{RED}{'#'*80}{RESET}")
+        print("\n")
+        
+        # Also log it
+        logger.info(f"📧 Email sent - To: {to_email}, Subject: {subject}")
     
     @classmethod
     def _send_via_azure(cls, client, sender, to_email, subject, html_content, text_content):
@@ -410,6 +448,113 @@ MedBuddy Team
         
         return cls.send_email(email, subject, html_content, text_content)
 
+    @classmethod
+    def send_patient_access_otp_email(cls, patient_email, patient_name, otp_code, 
+                                       requester_name, requester_role='pharmacy', 
+                                       purpose='add_prescription', is_new_patient=False):
+        """Send OTP to patient for pharmacy/doctor access verification"""
+        
+        role_display = {
+            'pharmacy': 'Pharmacy',
+            'doctor': 'Doctor',
+            'laboratory': 'Laboratory'
+        }.get(requester_role, 'Healthcare Provider')
+        
+        purpose_text = {
+            'add_prescription': 'add a prescription to your account',
+            'view_history': 'view your prescription history',
+            'send_report': 'send you a lab report'
+        }.get(purpose, 'access your medical records')
+        
+        subject = f"🔐 MedBuddy - {role_display} Access Verification"
+        
+        greeting = f"Dear {patient_name}," if patient_name else "Dear Patient,"
+        
+        if is_new_patient:
+            welcome_msg = """
+                    <div class="info-box">
+                        <strong>👋 Welcome to MedBuddy!</strong><br>
+                        An account has been created for you. After verification, you can log in to view your prescriptions and medical records.
+                    </div>
+            """
+        else:
+            welcome_msg = ""
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>{cls._get_base_styles()}</head>
+        <body>
+            <div class="container">
+                <div class="header header-purple">
+                    <div class="logo">🔐 Access Verification</div>
+                    <p>Healthcare Provider Request</p>
+                </div>
+                <div class="content">
+                    <p>{greeting}</p>
+                    
+                    {welcome_msg}
+                    
+                    <p><strong>{requester_name}</strong> ({role_display}) is requesting permission to <strong>{purpose_text}</strong>.</p>
+                    
+                    <p>Please share this verification code with them to authorize access:</p>
+                    
+                    <div class="otp-box">
+                        <span class="otp-code">{otp_code}</span>
+                    </div>
+                    
+                    <p class="text-muted">This code will expire in <strong>10 minutes</strong>.</p>
+                    
+                    <div class="warning-box">
+                        <strong>⚠️ Security Notice:</strong><br>
+                        Only share this code if you are physically present at <strong>{requester_name}</strong> and have requested this service. Never share this code over phone or email with unknown parties.
+                    </div>
+                    
+                    <div class="info-box">
+                        <strong>📋 Request Details:</strong><br>
+                        <table class="detail-table">
+                            <tr>
+                                <td><strong>Requester:</strong></td>
+                                <td>{requester_name}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Type:</strong></td>
+                                <td>{role_display}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Purpose:</strong></td>
+                                <td>{purpose_text.capitalize()}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Time:</strong></td>
+                                <td>{format_nyc_datetime()}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                {cls._get_footer()}
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+{greeting}
+
+{requester_name} ({role_display}) is requesting permission to {purpose_text}.
+
+Your verification code is: {otp_code}
+
+This code will expire in 10 minutes.
+
+SECURITY NOTICE: Only share this code if you are physically present at {requester_name} and have requested this service.
+
+Best regards,
+MedBuddy Team
+        """
+        
+        return cls.send_email(patient_email, subject, html_content, text_content)
+
     # =========================================================================
     # ADMIN VERIFICATION EMAILS
     # =========================================================================
@@ -728,7 +873,7 @@ MedBuddy Team
                         {f'<div class="detail-row"><span class="detail-label">Diagnosis:</span><span class="detail-value">{diagnosis}</span></div>' if diagnosis else ''}
                         <div class="detail-row">
                             <span class="detail-label">Date:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y')}</span>
+                            <span class="detail-value">{format_nyc_date()}</span>
                         </div>
                     </div>
                     
@@ -810,7 +955,7 @@ MedBuddy Team
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Date:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y at %I:%M %p')}</span>
+                            <span class="detail-value">{format_nyc_datetime()}</span>
                         </div>
                     </div>
                     
@@ -833,7 +978,7 @@ You have received a new prescription request.
 
 Patient: {patient_name}
 Sent by: {sender_text}
-Date: {timezone.now().strftime('%B %d, %Y at %I:%M %p')}
+Date: {format_nyc_datetime()}
 
 Please log in to your dashboard to view the full prescription.
 
@@ -902,7 +1047,7 @@ MedBuddy Team
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Date:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y at %I:%M %p')}</span>
+                            <span class="detail-value">{format_nyc_datetime()}</span>
                         </div>
                     </div>
                     
@@ -929,7 +1074,7 @@ Order ID: #{order_id}
 Patient: {patient_name}
 Ordering Doctor: Dr. {doctor_name}
 Collection Type: {'Home Collection' if is_home_collection else 'Lab Visit'}
-Date: {timezone.now().strftime('%B %d, %Y at %I:%M %p')}
+Date: {format_nyc_datetime()}
 
 Please log in to view the complete order details.
 
@@ -1061,7 +1206,7 @@ MedBuddy Team
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Report Date:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y')}</span>
+                            <span class="detail-value">{format_nyc_date()}</span>
                         </div>
                     </div>
                     
@@ -1125,7 +1270,7 @@ MedBuddy Team
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Report Date:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y')}</span>
+                            <span class="detail-value">{format_nyc_date()}</span>
                         </div>
                     </div>
                     
@@ -1145,7 +1290,7 @@ Dear Dr. {doctor_name},
 Lab results are now available for your patient {patient_name}.
 
 Laboratory: {lab_name}
-Report Date: {timezone.now().strftime('%B %d, %Y')}
+Report Date: {format_nyc_date()}
 
 Please log in to view the results.
 
@@ -1565,7 +1710,7 @@ MedBuddy Team
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Submitted:</span>
-                            <span class="detail-value">{timezone.now().strftime('%B %d, %Y at %I:%M %p')}</span>
+                            <span class="detail-value">{format_nyc_datetime()}</span>
                         </div>
                     </div>
                     

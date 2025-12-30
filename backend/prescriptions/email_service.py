@@ -59,6 +59,16 @@ class EmailService:
         """Send OTP for sensitive actions (viewing medical data, etc.)"""
         return AzureEmailService.send_sensitive_action_otp(email, otp_code, action_type, first_name)
     
+    @staticmethod
+    def send_patient_access_otp_email(patient_email, patient_name, otp_code, 
+                                       requester_name, requester_role='pharmacy',
+                                       purpose='add_prescription', is_new_patient=False):
+        """Send OTP to patient for pharmacy/doctor access verification"""
+        return AzureEmailService.send_patient_access_otp_email(
+            patient_email, patient_name, otp_code, 
+            requester_name, requester_role, purpose, is_new_patient
+        )
+    
     # =========================================================================
     # ADMIN VERIFICATION EMAILS
     # =========================================================================
@@ -231,7 +241,7 @@ class EmailService:
             doctor_specialization=doctor_specialization,
             prescription_id=str(prescription.id),
             medications=medications,
-            diagnosis=prescription.diagnosis
+            diagnosis=prescription.notes or ''
         )
     
     @staticmethod

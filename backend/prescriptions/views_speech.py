@@ -138,14 +138,29 @@ class LabReportTextToSpeechView(views.APIView):
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            # Build report data for speech
+            # Build report data for speech - handle different data types
+            abnormal = getattr(report, 'abnormal_values', None)
+            if abnormal is None:
+                abnormal = []
+            elif isinstance(abnormal, str):
+                # If it's a string, wrap it in a list
+                abnormal = [abnormal] if abnormal else []
+            elif not isinstance(abnormal, list):
+                abnormal = []
+            
+            recommendations = getattr(report, 'recommendations', '')
+            if recommendations is None:
+                recommendations = ''
+            elif isinstance(recommendations, list):
+                recommendations = '. '.join(recommendations)
+            
             report_data = {
-                'report_type': report.report_type,
+                'report_type': report.report_type or '',
                 'test_date': report.report_date.strftime('%B %d, %Y') if report.report_date else None,
-                'laboratory_name': getattr(report, 'laboratory_name', ''),
-                'analysis_summary': getattr(report, 'analysis_summary', ''),
-                'abnormal_values': report.abnormal_values if isinstance(getattr(report, 'abnormal_values', None), list) else [],
-                'recommendations': getattr(report, 'recommendations', ''),
+                'laboratory_name': getattr(report, 'laboratory_name', '') or '',
+                'analysis_summary': getattr(report, 'analysis_summary', '') or '',
+                'abnormal_values': abnormal,
+                'recommendations': recommendations,
             }
             
             # Get voice preference
