@@ -706,6 +706,20 @@ class PatientLabReportUploadView(views.APIView):
             report.status = 'pending'
             report.save()
         
+        # Send confirmation email to patient
+        try:
+            from .azure_email_service import AzureEmailService
+            AzureEmailService.send_patient_self_upload_confirmation(
+                patient_email=request.user.email,
+                patient_name=request.user.get_full_name(),
+                report_title=report_title
+            )
+            report.email_sent = True
+            report.email_sent_at = timezone.now()
+            report.save()
+        except Exception as e:
+            logger.error(f"Failed to send self-upload confirmation email: {e}")
+        
         return Response({
             'message': 'Report uploaded successfully',
             'report_id': str(report.id),

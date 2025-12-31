@@ -257,3 +257,68 @@ class PharmacySale(models.Model):
         if self.cost_price:
             self.profit = self.total_price - (self.quantity * self.cost_price)
         super().save(*args, **kwargs)
+
+
+class PrescriptionOrder(models.Model):
+    """
+    Patient-initiated prescription order to pharmacy
+    Workflow: pending -> sent_to_pharmacy -> pharmacy_quoted -> patient_accepted -> ready_for_pickup -> completed
+    """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent_to_pharmacy', 'Sent to Pharmacy'),
+        ('pharmacy_quoted', 'Quote Received'),
+        ('patient_accepted', 'Accepted by Patient'),
+        ('preparing', 'Preparing'),
+        ('ready_for_pickup', 'Ready for Pickup'),
+        ('completed', 'Completed'),
+        ('cancelled', 'Cancelled'),
+        ('rejected', 'Rejected by Pharmacy'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order_number = models.CharField(max_length=20, unique=True, blank=True)
+    
+    # Relations
+    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='prescription_orders')
+    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='prescription_orders')
+    pharmacy = models.ForeignKey(Pharmacy, on_delete=models.CASCADE, related_name='prescription_orders')
+    
+    # Selected medications from prescription
+    selected_medications = models.JSONField(default=list)  # [{name, dosage, quantity}]
+    
+    # Status workflow
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending')
+    
+    # Quote from pharmacy
+    quoted_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    quote_details = models.JSONField(null=True, blank=True)  # Breakdown of costs
+    quote_valid_until = models.DateTimeField(null=True, blank=True)
+    
+    # Notes
+    patient_notes = models.TextField(blank=True)  # Special instructions from patient
+    pharmacy_notes = models.TextField(blank=True)  # Notes from pharmacy
+    
+    # Pickup/Delivery
+    estimated_ready_time = models.DateTimeField(null=True, blank=True)
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    quoted_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    ready_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = 'prescription_orders'
+        ordering = ['-created_at']
+    
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            import random
+            self.order_number = f"PO{random.randint(10000000, 99999999)}"
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.order_number} - {self.patient.email} -> {self.pharmacy.name}"

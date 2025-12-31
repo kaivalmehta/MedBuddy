@@ -1741,6 +1741,285 @@ MedBuddy System
         
         return cls.send_email(admin_email, subject, html_content, text_content)
 
+    # =========================================================================
+    # EMAIL WITH ATTACHMENTS
+    # =========================================================================
+    
+    @classmethod
+    def send_email_with_attachment(cls, to_email, subject, html_content, text_content=None, 
+                                    attachment_data=None, attachment_name=None, attachment_type='application/pdf'):
+        """
+        Send email with attachment using Azure Communication Services
+        
+        Args:
+            attachment_data: bytes of the file
+            attachment_name: filename for the attachment
+            attachment_type: MIME type (default: application/pdf)
+        """
+        import base64
+        
+        if text_content is None:
+            import re
+            text_content = re.sub('<[^<]+?>', '', html_content)
+        
+        # Print to console for testing/debugging
+        cls._print_email_to_console(to_email, subject, text_content)
+        if attachment_name:
+            print(f"📎 Attachment: {attachment_name} ({len(attachment_data) if attachment_data else 0} bytes)")
+        
+        client = cls.get_client()
+        sender_email = getattr(settings, 'AZURE_EMAIL_SENDER', None)
+        
+        # Prepare attachment if provided
+        attachments = None
+        if attachment_data and attachment_name:
+            attachments = [{
+                "name": attachment_name,
+                "contentType": attachment_type,
+                "contentInBase64": base64.b64encode(attachment_data).decode('utf-8')
+            }]
+        
+        if client and sender_email:
+            return cls._send_via_azure_with_attachment(client, sender_email, to_email, subject, 
+                                                        html_content, text_content, attachments)
+        else:
+            return cls._send_via_django_with_attachment(to_email, subject, html_content, text_content,
+                                                         attachment_data, attachment_name, attachment_type)
+    
+    @classmethod
+    def _send_via_azure_with_attachment(cls, client, sender, to_email, subject, html_content, text_content, attachments):
+        """Send using Azure Communication Services with attachment"""
+        try:
+            message = {
+                "senderAddress": sender,
+                "recipients": {
+                    "to": [{"address": to_email}]
+                },
+                "content": {
+                    "subject": subject,
+                    "plainText": text_content,
+                    "html": html_content
+                }
+            }
+            
+            if attachments:
+                message["attachments"] = attachments
+            
+            poller = client.begin_send(message)
+            result = poller.result()
+            
+            logger.info(f"Azure Email with attachment sent successfully to {to_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Azure Email with attachment failed to {to_email}: {e}")
+            return False
+    
+    @classmethod
+    def _send_via_django_with_attachment(cls, to_email, subject, html_content, text_content,
+                                          attachment_data, attachment_name, attachment_type):
+        """Fallback to Django's email system with attachment"""
+        try:
+            from django.core.mail import EmailMultiAlternatives
+            
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            
+            if attachment_data and attachment_name:
+                email.attach(attachment_name, attachment_data, attachment_type)
+            
+            email.send()
+            
+            logger.info(f"Django Email with attachment sent successfully to {to_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Django Email with attachment failed to {to_email}: {e}")
+            return False
+
+    @classmethod
+    def send_lab_report_with_pdf(cls, patient_email, patient_name, report_title, lab_name, 
+                                  test_names, has_critical_values=False, critical_message=None,
+                                  pdf_data=None, pdf_filename=None):
+        """
+        Send lab report ready notification with PDF attachment
+        """
+        subject = f"🔬 Your Lab Report is Ready: {report_title}"
+        
+        greeting = f"Dear {patient_name}," if patient_name else "Hello,"
+        
+        critical_box = ""
+        if has_critical_values:
+            critical_box = f"""
+            <div class="danger-box">
+                <strong>⚠️ Critical Values Detected</strong><br>
+                {critical_message or 'Some values in your report require immediate medical attention. Please consult your doctor.'}
+            </div>
+            """
+        
+        tests_list = "".join([f"<li>{test}</li>" for test in test_names]) if test_names else "<li>Complete Report</li>"
+        
+        attachment_note = ""
+        if pdf_data:
+            attachment_note = """
+            <div class="success-box">
+                <strong>📎 PDF Attached</strong><br>
+                Your complete lab report is attached to this email for your records.
+            </div>
+            """
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>{cls._get_base_styles()}</head>
+        <body>
+            <div class="container">
+                <div class="header header-purple">
+                    <div class="logo">🔬 Lab Report Ready</div>
+                    <p>Your Results Are In</p>
+                </div>
+                <div class="content">
+                    <p>{greeting}</p>
+                    <p>Great news! Your lab report is now ready to view.</p>
+                    
+                    <div class="info-box">
+                        <strong>📋 Report Details</strong><br>
+                        <div class="detail-row">
+                            <span class="detail-label">Report:</span>
+                            <span class="detail-value">{report_title}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Laboratory:</span>
+                            <span class="detail-value">{lab_name}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Date:</span>
+                            <span class="detail-value">{format_nyc_date()}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-box">
+                        <strong>🧪 Tests Included:</strong>
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                            {tests_list}
+                        </ul>
+                    </div>
+                    
+                    {critical_box}
+                    {attachment_note}
+                    
+                    <center>
+                        <a href="{settings.FRONTEND_URL}/reports" class="btn btn-primary">View Full Report</a>
+                    </center>
+                    
+                    <div class="warning-box">
+                        <strong>📌 Important:</strong> Keep this report for your medical records. 
+                        If you have any questions about your results, please consult your healthcare provider.
+                    </div>
+                </div>
+                {cls._get_footer()}
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+{greeting}
+
+Your lab report "{report_title}" from {lab_name} is now ready.
+
+{'⚠️ CRITICAL VALUES DETECTED - Please consult your doctor immediately.' if has_critical_values else ''}
+
+View your report at: {settings.FRONTEND_URL}/reports
+
+Best regards,
+MedBuddy Team
+        """
+        
+        if pdf_data and pdf_filename:
+            return cls.send_email_with_attachment(
+                patient_email, subject, html_content, text_content,
+                attachment_data=pdf_data, 
+                attachment_name=pdf_filename,
+                attachment_type='application/pdf'
+            )
+        else:
+            return cls.send_email(patient_email, subject, html_content, text_content)
+
+    @classmethod
+    def send_patient_self_upload_confirmation(cls, patient_email, patient_name, report_title):
+        """
+        Send confirmation email when patient uploads their own lab report
+        """
+        subject = f"✅ Lab Report Uploaded Successfully: {report_title}"
+        
+        greeting = f"Dear {patient_name}," if patient_name else "Hello,"
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>{cls._get_base_styles()}</head>
+        <body>
+            <div class="container">
+                <div class="header header-success">
+                    <div class="logo">✅ Upload Successful</div>
+                    <p>Your Lab Report Has Been Saved</p>
+                </div>
+                <div class="content">
+                    <p>{greeting}</p>
+                    <p>Your lab report has been successfully uploaded to MedBuddy.</p>
+                    
+                    <div class="success-box">
+                        <strong>📋 Report Details</strong><br>
+                        <div class="detail-row">
+                            <span class="detail-label">Report:</span>
+                            <span class="detail-value">{report_title}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Uploaded:</span>
+                            <span class="detail-value">{format_nyc_datetime()}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Status:</span>
+                            <span class="detail-value"><span class="badge badge-success">Ready to View</span></span>
+                        </div>
+                    </div>
+                    
+                    <p>Your report is now securely stored and ready to view anytime from your MedBuddy dashboard.</p>
+                    
+                    <center>
+                        <a href="{settings.FRONTEND_URL}/reports" class="btn btn-primary">View My Reports</a>
+                    </center>
+                    
+                    <div class="info-box">
+                        <strong>💡 Tip:</strong> You can share this report with your healthcare providers 
+                        directly from MedBuddy for better coordinated care.
+                    </div>
+                </div>
+                {cls._get_footer()}
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+{greeting}
+
+Your lab report "{report_title}" has been successfully uploaded to MedBuddy.
+
+View your reports at: {settings.FRONTEND_URL}/reports
+
+Best regards,
+MedBuddy Team
+        """
+        
+        return cls.send_email(patient_email, subject, html_content, text_content)
+
 
 # Create a simpler alias for backward compatibility
 EmailService = AzureEmailService

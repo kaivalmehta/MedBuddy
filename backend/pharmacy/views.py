@@ -12,12 +12,15 @@ from django.shortcuts import get_object_or_404
 from django.db import transaction
 from datetime import date
 
-from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale, PrescriptionOrder
 from .serializers import (
     PharmacySerializer, PharmacyOrderSerializer,
     OrderStatusUpdateSerializer, PharmacyInventorySerializer,
     PharmacyReviewSerializer, ChatMessageSerializer,
-    PharmacySaleSerializer, DispenseItemSerializer
+    PharmacySaleSerializer, DispenseItemSerializer,
+    PrescriptionOrderSerializer, PrescriptionOrderCreateSerializer,
+    PrescriptionOrderQuoteSerializer, PrescriptionOrderStatusUpdateSerializer,
+    PrescriptionOrderListSerializer
 )
 
 from users.models import User, PatientAccessToken, HealthProfile
@@ -1355,3 +1358,342 @@ class ChatView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         order = PharmacyOrder.objects.get(pk=self.kwargs['order_id'])
         serializer.save(order=order, sender=self.request.user)
+
+
+# ============================================
+# PRESCRIPTION ORDER VIEWS (Patient-initiated)
+# ============================================
+
+class PatientPrescriptionOrderCreateView(views.APIView):
+    """Patient creates a prescription order to send to pharmacy"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = PrescriptionOrderCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        
+        # Get prescription
+        try:
+            prescription = Prescription.objects.get(
+                id=data['prescription_id'],
+                user=request.user
+            )
+        except Prescription.DoesNotExist:
+            return Response({'error': 'Prescription not found'}, status=404)
+        
+        # Get pharmacy
+        try:
+            pharmacy = Pharmacy.objects.get(
+                id=data['pharmacy_id'],
+                is_verified=True
+            )
+        except Pharmacy.DoesNotExist:
+            return Response({'error': 'Pharmacy not found'}, status=404)
+        
+        # Create order
+        order = PrescriptionOrder.objects.create(
+            prescription=prescription,
+            patient=request.user,
+            pharmacy=pharmacy,
+            selected_medications=data['selected_medications'],
+            patient_notes=data.get('patient_notes', ''),
+            status='sent_to_pharmacy'
+        )
+        
+        # Send notification to pharmacy
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            AzureEmailService.send_email(
+                to_email=pharmacy.email,
+                subject=f"📋 New Prescription Order: {order.order_number}",
+                html_content=f"""
+                <h2>New Prescription Order</h2>
+                <p>You have received a new prescription order.</p>
+                <p><strong>Order Number:</strong> {order.order_number}</p>
+                <p><strong>Patient:</strong> {request.user.get_full_name() or request.user.email}</p>
+                <p><strong>Medications:</strong> {len(data['selected_medications'])} items</p>
+                <p>Please log in to MedBuddy to review and provide a quote.</p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify pharmacy: {e}")
+        
+        return Response({
+            'message': 'Order created successfully',
+            'order': PrescriptionOrderSerializer(order).data
+        }, status=201)
+
+
+class PatientPrescriptionOrderListView(generics.ListAPIView):
+    """List patient's prescription orders"""
+    serializer_class = PrescriptionOrderListSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return PrescriptionOrder.objects.filter(
+            patient=self.request.user
+        ).select_related('pharmacy', 'prescription').order_by('-created_at')
+
+
+class PatientPrescriptionOrderDetailView(views.APIView):
+    """Get prescription order detail and accept/reject quote"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.select_related(
+                'pharmacy', 'prescription'
+            ).get(id=order_id, patient=request.user)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        return Response(PrescriptionOrderSerializer(order).data)
+    
+    def post(self, request, order_id):
+        """Accept or reject pharmacy quote"""
+        try:
+            order = PrescriptionOrder.objects.get(id=order_id, patient=request.user)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        action = request.data.get('action')
+        
+        if action == 'accept':
+            if order.status != 'pharmacy_quoted':
+                return Response({'error': 'Cannot accept - order is not quoted'}, status=400)
+            
+            order.status = 'patient_accepted'
+            order.accepted_at = timezone.now()
+            order.save()
+            
+            # Notify pharmacy
+            try:
+                from prescriptions.azure_email_service import AzureEmailService
+                AzureEmailService.send_email(
+                    to_email=order.pharmacy.email,
+                    subject=f"✅ Quote Accepted: Order {order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Accepted</h2>
+                    <p>The patient has accepted your quote for order {order.order_number}.</p>
+                    <p><strong>Amount:</strong> ${order.quoted_amount}</p>
+                    <p>Please prepare the order and mark it ready when complete.</p>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify pharmacy: {e}")
+            
+            return Response({
+                'message': 'Quote accepted',
+                'order': PrescriptionOrderSerializer(order).data
+            })
+        
+        elif action == 'reject':
+            order.status = 'cancelled'
+            order.save()
+            return Response({
+                'message': 'Order cancelled',
+                'order': PrescriptionOrderSerializer(order).data
+            })
+        
+        return Response({'error': 'Invalid action'}, status=400)
+
+
+class PharmacyPrescriptionOrderListView(generics.ListAPIView):
+    """List prescription orders for pharmacy"""
+    serializer_class = PrescriptionOrderListSerializer
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def get_queryset(self):
+        pharmacy = self.request.user.pharmacy_profile
+        status_filter = self.request.query_params.get('status')
+        
+        queryset = PrescriptionOrder.objects.filter(
+            pharmacy=pharmacy
+        ).select_related('patient', 'prescription').order_by('-created_at')
+        
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
+
+
+class PharmacyPrescriptionOrderDetailView(views.APIView):
+    """Pharmacy views and updates prescription order"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def get(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.select_related(
+                'patient', 'prescription'
+            ).get(id=order_id, pharmacy=request.user.pharmacy_profile)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        return Response(PrescriptionOrderSerializer(order).data)
+
+
+class PharmacyProvideQuoteView(views.APIView):
+    """Pharmacy provides quote for prescription order"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.get(
+                id=order_id,
+                pharmacy=request.user.pharmacy_profile
+            )
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        if order.status not in ['sent_to_pharmacy', 'pending']:
+            return Response({'error': 'Cannot provide quote for this order'}, status=400)
+        
+        serializer = PrescriptionOrderQuoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        
+        order.quoted_amount = data['quoted_amount']
+        order.quote_details = data.get('quote_details')
+        order.pharmacy_notes = data.get('pharmacy_notes', '')
+        order.estimated_ready_time = data.get('estimated_ready_time')
+        order.status = 'pharmacy_quoted'
+        order.quoted_at = timezone.now()
+        
+        # Set quote valid for 24 hours
+        from datetime import timedelta
+        order.quote_valid_until = timezone.now() + timedelta(hours=24)
+        order.save()
+        
+        # Notify patient
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            AzureEmailService.send_email(
+                to_email=order.patient.email,
+                subject=f"💰 Quote Ready: Order {order.order_number}",
+                html_content=f"""
+                <h2>Your Prescription Quote is Ready</h2>
+                <p>{request.user.pharmacy_profile.name} has provided a quote for your prescription order.</p>
+                <p><strong>Order Number:</strong> {order.order_number}</p>
+                <p><strong>Quoted Amount:</strong> ${order.quoted_amount}</p>
+                {f'<p><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                <p>Please log in to MedBuddy to accept or decline this quote.</p>
+                <p><em>This quote is valid for 24 hours.</em></p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify patient: {e}")
+        
+        return Response({
+            'message': 'Quote provided',
+            'order': PrescriptionOrderSerializer(order).data
+        })
+
+
+class PharmacyUpdateOrderStatusView(views.APIView):
+    """Pharmacy updates prescription order status"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.get(
+                id=order_id,
+                pharmacy=request.user.pharmacy_profile
+            )
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        serializer = PrescriptionOrderStatusUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        new_status = data['status']
+        
+        # Validate status transitions
+        valid_transitions = {
+            'patient_accepted': ['preparing', 'cancelled'],
+            'preparing': ['ready_for_pickup', 'cancelled'],
+            'ready_for_pickup': ['completed'],
+        }
+        
+        if order.status not in valid_transitions or new_status not in valid_transitions.get(order.status, []):
+            if new_status not in ['rejected', 'cancelled']:
+                return Response({
+                    'error': f'Cannot transition from {order.status} to {new_status}'
+                }, status=400)
+        
+        order.status = new_status
+        if data.get('pharmacy_notes'):
+            order.pharmacy_notes = data['pharmacy_notes']
+        if data.get('estimated_ready_time'):
+            order.estimated_ready_time = data['estimated_ready_time']
+        
+        if new_status == 'ready_for_pickup':
+            order.ready_at = timezone.now()
+        elif new_status == 'completed':
+            order.completed_at = timezone.now()
+        
+        order.save()
+        
+        # Notify patient
+        status_messages = {
+            'preparing': ('⚙️ Order Being Prepared', 'Your prescription is being prepared.'),
+            'ready_for_pickup': ('✅ Ready for Pickup', 'Your prescription is ready! Visit the pharmacy to collect.'),
+            'completed': ('🎉 Order Complete', 'Your prescription order has been completed.'),
+            'cancelled': ('❌ Order Cancelled', 'Your prescription order has been cancelled.'),
+            'rejected': ('❌ Order Rejected', 'The pharmacy was unable to fulfill your order.'),
+        }
+        
+        if new_status in status_messages:
+            try:
+                from prescriptions.azure_email_service import AzureEmailService
+                subject, message = status_messages[new_status]
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"{subject}: Order {order.order_number}",
+                    html_content=f"""
+                    <h2>{subject}</h2>
+                    <p>{message}</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Pharmacy:</strong> {request.user.pharmacy_profile.name}</p>
+                    {f'<p><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify patient: {e}")
+        
+        return Response({
+            'message': f'Order status updated to {new_status}',
+            'order': PrescriptionOrderSerializer(order).data
+        })
+
+
+class RegisteredPharmaciesView(generics.ListAPIView):
+    """List all registered and verified pharmacies"""
+    serializer_class = PharmacySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Get all active verified pharmacies
+        return Pharmacy.objects.filter(
+            is_active=True,
+            is_verified=True,
+            user__is_professional_verified=True
+        ).select_related('user').order_by('name')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        
+        # Manual serialization
+        data = []
+        for pharmacy in queryset[:100]:  # Limit to 100 results
+            serializer = self.get_serializer(pharmacy)
+            pharmacy_data = serializer.data
+            data.append(pharmacy_data)
+        
+        return Response(data)

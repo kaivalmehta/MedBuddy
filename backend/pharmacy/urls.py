@@ -56,5 +56,20 @@ urlpatterns = [
     # PUBLIC (For patients finding pharmacies)
     # ============================================
     path('nearby/', views.NearbyPharmaciesView.as_view(), name='nearby_pharmacies'),
+    path('registered/', views.RegisteredPharmaciesView.as_view(), name='registered_pharmacies'),
     path('<uuid:pk>/reviews/', views.PharmacyReviewView.as_view(), name='pharmacy_reviews'),
+    
+    # ============================================
+    # PRESCRIPTION ORDERS (Patient-initiated)
+    # ============================================
+    # Patient endpoints
+    path('prescription-orders/', views.PatientPrescriptionOrderListView.as_view(), name='patient_prescription_orders'),
+    path('prescription-orders/create/', views.PatientPrescriptionOrderCreateView.as_view(), name='create_prescription_order'),
+    path('prescription-orders/<uuid:order_id>/', views.PatientPrescriptionOrderDetailView.as_view(), name='patient_prescription_order_detail'),
+    
+    # Pharmacy endpoints
+    path('rx-orders/', views.PharmacyPrescriptionOrderListView.as_view(), name='pharmacy_rx_orders'),
+    path('rx-orders/<uuid:order_id>/', views.PharmacyPrescriptionOrderDetailView.as_view(), name='pharmacy_rx_order_detail'),
+    path('rx-orders/<uuid:order_id>/quote/', views.PharmacyProvideQuoteView.as_view(), name='pharmacy_provide_quote'),
+    path('rx-orders/<uuid:order_id>/status/', views.PharmacyUpdateOrderStatusView.as_view(), name='pharmacy_update_rx_status'),
 ]

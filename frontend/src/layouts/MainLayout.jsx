@@ -9,7 +9,8 @@ import {
   Heart, Home, Upload, FileText, User, Users, Bell, MapPin,
   ShoppingBag, LayoutDashboard, Package, Boxes, Menu, X, LogOut,
   ChevronRight, Stethoscope, FlaskConical, UserSearch,
-  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp, Building2, Globe
+  FilePlus, ClipboardList, History, Send, TestTube, TrendingUp, Building2, Globe,
+  ShieldAlert, Clock, ShoppingCart
 } from 'lucide-react'
 import { LanguageSelector } from '../components/Translation'
 
@@ -18,12 +19,14 @@ const patientNav = [
   { path: '/dashboard', icon: Home, label: 'Dashboard' },
   { path: '/upload', icon: Upload, label: 'Upload Prescription' },
   { path: '/prescriptions', icon: FileText, label: 'My Prescriptions' },
+  { path: '/order-prescription', icon: ShoppingCart, label: 'Order Prescription' },
+  { path: '/prescription-orders', icon: Package, label: 'My Rx Orders' },
   { path: '/reports', icon: TestTube, label: 'Lab Reports' },
   { path: '/order-test', icon: FlaskConical, label: 'Order Lab Test' },
   { path: '/lab-orders', icon: ClipboardList, label: 'My Lab Orders' },
-  { path: '/alerts', icon: Bell, label: 'Health Alerts', highlight: true },
-  { path: '/reminders', icon: Bell, label: 'Reminders' },
-  { path: '/orders', icon: ShoppingBag, label: 'My Orders' },
+  { path: '/alerts', icon: ShieldAlert, label: 'Health Alerts', highlight: true },
+  { path: '/reminders', icon: Clock, label: 'Reminders' },
+  { path: '/orders', icon: ShoppingBag, label: 'Pharmacy Orders' },
   { path: '/translate', icon: Globe, label: 'Translate', highlight: true },
   { divider: true },
   { path: '/health-profile', icon: User, label: 'Health Profile' },
@@ -36,6 +39,7 @@ const pharmacyNav = [
   { path: '/pharmacy/patient-access', icon: UserSearch, label: 'Access Patient' },
   { path: '/pharmacy/scan', icon: Upload, label: 'Scan & Send' },
   { path: '/pharmacy/sent', icon: Send, label: 'Sent Prescriptions' },
+  { path: '/pharmacy/rx-orders', icon: Package, label: 'Rx Orders', highlight: true },
   { divider: true },
   { path: '/pharmacy/sales', icon: TrendingUp, label: 'Sales Dashboard' },
   { path: '/pharmacy/inventory', icon: Boxes, label: 'Inventory' },

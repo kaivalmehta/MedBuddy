@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale, PrescriptionOrder
 from prescriptions.serializers import PrescriptionDetailSerializer
 
 
@@ -123,3 +123,98 @@ class DispenseItemSerializer(serializers.Serializer):
     customer_phone = serializers.CharField(max_length=20, required=False, allow_blank=True)
     prescription_id = serializers.UUIDField(required=False, allow_null=True)
     notes = serializers.CharField(required=False, allow_blank=True)
+
+
+# ========================================
+# PRESCRIPTION ORDER SERIALIZERS
+# ========================================
+
+class PrescriptionOrderSerializer(serializers.ModelSerializer):
+    """Full serializer for prescription orders"""
+    prescription = PrescriptionDetailSerializer(read_only=True)
+    pharmacy_name = serializers.CharField(source='pharmacy.name', read_only=True)
+    pharmacy_address = serializers.CharField(source='pharmacy.address', read_only=True)
+    pharmacy_phone = serializers.CharField(source='pharmacy.phone', read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    patient_email = serializers.CharField(source='patient.email', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    class Meta:
+        model = PrescriptionOrder
+        fields = [
+            'id', 'order_number', 'prescription', 'pharmacy', 'pharmacy_name',
+            'pharmacy_address', 'pharmacy_phone', 'patient', 'patient_name',
+            'patient_email', 'selected_medications', 'status', 'status_display',
+            'quoted_amount', 'quote_details', 'quote_valid_until',
+            'patient_notes', 'pharmacy_notes', 'estimated_ready_time',
+            'created_at', 'updated_at', 'quoted_at', 'accepted_at',
+            'ready_at', 'completed_at'
+        ]
+        read_only_fields = [
+            'id', 'order_number', 'prescription', 'patient', 'created_at',
+            'updated_at', 'quoted_at', 'accepted_at', 'ready_at', 'completed_at'
+        ]
+    
+    def get_patient_name(self, obj):
+        return f"{obj.patient.first_name} {obj.patient.last_name}".strip() or obj.patient.email
+
+
+class PrescriptionOrderCreateSerializer(serializers.Serializer):
+    """Create a prescription order"""
+    prescription_id = serializers.UUIDField()
+    pharmacy_id = serializers.UUIDField()
+    selected_medications = serializers.ListField(
+        child=serializers.DictField(),  # [{name, dosage, quantity}]
+        required=True
+    )
+    patient_notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class PrescriptionOrderQuoteSerializer(serializers.Serializer):
+    """Pharmacy provides a quote for the order"""
+    quoted_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    quote_details = serializers.DictField(required=False)  # Breakdown of costs
+    pharmacy_notes = serializers.CharField(required=False, allow_blank=True)
+    estimated_ready_time = serializers.DateTimeField(required=False)
+
+
+class PrescriptionOrderStatusUpdateSerializer(serializers.Serializer):
+    """Update prescription order status"""
+    status = serializers.ChoiceField(choices=[
+        'preparing', 'ready_for_pickup', 'completed', 'cancelled', 'rejected'
+    ])
+    pharmacy_notes = serializers.CharField(required=False, allow_blank=True)
+    estimated_ready_time = serializers.DateTimeField(required=False)
+
+
+class PrescriptionOrderListSerializer(serializers.ModelSerializer):
+    """Simplified serializer for listing orders"""
+    pharmacy_name = serializers.CharField(source='pharmacy.name', read_only=True)
+    patient_name = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    medication_count = serializers.SerializerMethodField()
+    prescription_title = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PrescriptionOrder
+        fields = [
+            'id', 'order_number', 'pharmacy_name', 'patient_name',
+            'status', 'status_display', 'quoted_amount', 'medication_count',
+            'prescription_title', 'created_at', 'updated_at'
+        ]
+    
+    def get_patient_name(self, obj):
+        return f"{obj.patient.first_name} {obj.patient.last_name}".strip() or obj.patient.email
+    
+    def get_medication_count(self, obj):
+        return len(obj.selected_medications) if obj.selected_medications else 0
+    
+    def get_prescription_title(self, obj):
+        if obj.prescription and hasattr(obj.prescription, 'medications') and obj.prescription.medications:
+            meds = obj.prescription.medications
+            if isinstance(meds, list) and len(meds) > 0:
+                first_med = meds[0].get('name', 'Prescription') if isinstance(meds[0], dict) else str(meds[0])
+                if len(meds) > 1:
+                    return f"{first_med} + {len(meds) - 1} more"
+                return first_med
+        return f"Order {obj.order_number}"

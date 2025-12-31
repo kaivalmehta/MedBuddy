@@ -1016,37 +1016,49 @@ class LabUploadReportWithAnalysisView(views.APIView):
             test_order.save()
         
         # Send notifications
-        email_service = EmailService()
+        from prescriptions.azure_email_service import AzureEmailService
         
-        # Always notify patient
+        # Always notify patient with PDF attachment if applicable
         if send_email:
             try:
-                critical_warning = ""
-                if has_critical:
-                    critical_warning = """
-                    <div style="background: #FEF2F2; border: 1px solid #EF4444; padding: 15px; border-radius: 8px; margin: 15px 0;">
-                        <h3 style="color: #DC2626; margin: 0;">⚠️ Critical Values Detected</h3>
-                        <p style="margin: 10px 0 0 0;">Your lab report contains critical values that require immediate medical attention. Please contact your healthcare provider as soon as possible.</p>
-                    </div>
-                    """
+                # Get PDF content for attachment if it's a PDF
+                pdf_data = None
+                pdf_filename = None
+                if file.content_type == 'application/pdf':
+                    file.seek(0)
+                    pdf_data = file.read()
+                    pdf_filename = f"{report_title.replace(' ', '_')}_{report.report_date}.pdf"
                 
-                email_service.send_email(
-                    to_email=patient.email,
-                    subject=f"{'⚠️ URGENT: ' if has_critical else ''}New Lab Report from {lab_name}",
-                    html_content=f"""
-                    <h2>New Lab Report Available</h2>
-                    {critical_warning}
-                    <p><strong>Report:</strong> {report_title}</p>
-                    <p><strong>Laboratory:</strong> {lab_name}</p>
-                    <p><strong>Date:</strong> {report.report_date}</p>
-                    <p>Log in to MedBuddy to view your complete report.</p>
-                    """
+                # Get test names from critical values or use report title
+                test_names = [cv['test_name'] for cv in critical_values] if critical_values else [report_type]
+                
+                critical_message = None
+                if has_critical:
+                    critical_details = ", ".join([f"{cv['test_name']}: {cv['measured_value']}" 
+                                                  for cv in critical_values 
+                                                  if cv.get('severity') in ['critical_low', 'critical_high', 'panic']])
+                    critical_message = f"Critical values detected: {critical_details}. Please contact your healthcare provider immediately."
+                
+                # Send email with PDF attachment
+                AzureEmailService.send_lab_report_with_pdf(
+                    patient_email=patient.email,
+                    patient_name=patient.get_full_name(),
+                    report_title=report_title,
+                    lab_name=lab_name,
+                    test_names=test_names,
+                    has_critical_values=has_critical,
+                    critical_message=critical_message,
+                    pdf_data=pdf_data,
+                    pdf_filename=pdf_filename
                 )
+                
                 report.email_sent = True
                 report.email_sent_at = timezone.now()
                 report.save()
             except Exception as e:
                 logger.error(f"Failed to send patient email: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         # If critical values, also notify referring doctor
         if has_critical and referring_doctor:
@@ -1062,7 +1074,7 @@ class LabUploadReportWithAnalysisView(views.APIView):
                     doctor_email = test_order.doctor.email
                 
                 if doctor_email:
-                    email_service.send_email(
+                    AzureEmailService.send_email(
                         to_email=doctor_email,
                         subject=f"⚠️ CRITICAL: Lab Results for Patient {patient.get_full_name() or patient.email}",
                         html_content=f"""

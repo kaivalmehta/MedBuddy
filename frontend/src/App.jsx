@@ -30,6 +30,8 @@ import LabReports from './pages/patient/LabReports'
 import LabReportDetail from './pages/patient/LabReportDetail'
 import PatientTestOrders from './pages/patient/PatientTestOrders'
 import PatientOrderTest from './pages/patient/PatientOrderTest'
+import OrderPrescription from './pages/patient/OrderPrescription'
+import PrescriptionOrders from './pages/patient/PrescriptionOrders'
 
 // Pharmacy Pages
 import PharmacyDashboard from './pages/pharmacy/PharmacyDashboard'
@@ -40,6 +42,7 @@ import PharmacyPatientHistory from './pages/pharmacy/PharmacyPatientHistory'
 import SalesDashboard from './pages/pharmacy/SalesDashboard'
 import Inventory from './pages/pharmacy/Inventory'
 import PharmacyProfile from './pages/pharmacy/PharmacyProfile'
+import PharmacyRxOrders from './pages/pharmacy/PharmacyRxOrders'
 
 // Doctor Pages
 import DoctorDashboard from './pages/doctor/DoctorDashboard'
@@ -146,6 +149,8 @@ export default function App() {
           <Route path="/health-profile" element={<HealthProfile />} />
           <Route path="/family" element={<FamilyMembers />} />
           <Route path="/reminders" element={<Reminders />} />
+          <Route path="/order-prescription" element={<OrderPrescription />} />
+          <Route path="/prescription-orders" element={<PrescriptionOrders />} />
           <Route path="/pharmacies" element={<FindPharmacy />} />
           <Route path="/orders" element={<MyOrders />} />
           <Route path="/lab-orders" element={<PatientTestOrders />} />
@@ -164,6 +169,7 @@ export default function App() {
         <Route path="/pharmacy/sent" element={<PharmacySentHistory />} />
         <Route path="/pharmacy/sales" element={<SalesDashboard />} />
         <Route path="/pharmacy/inventory" element={<Inventory />} />
+        <Route path="/pharmacy/rx-orders" element={<PharmacyRxOrders />} />
         <Route path="/pharmacy/profile" element={<PharmacyProfile />} />
       </Route>
       
