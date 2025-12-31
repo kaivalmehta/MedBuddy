@@ -21,7 +21,7 @@ export default function LabUploadReport() {
   const [referringDoctor, setReferringDoctor] = useState('')
   const [notes, setNotes] = useState('')
   const [sendEmail, setSendEmail] = useState(true)
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([]) // Changed to array for multiple files
   const [testOrderId, setTestOrderId] = useState(searchParams.get('order') || '')
   
   // UI state
@@ -29,12 +29,14 @@ export default function LabUploadReport() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [uploadResult, setUploadResult] = useState(null)
+  const [uploadResults, setUploadResults] = useState([]) // Array of results for multiple uploads
+  const [currentFileIndex, setCurrentFileIndex] = useState(0)
   const [patientExists, setPatientExists] = useState(false)
   const [verifyingPatient, setVerifyingPatient] = useState(false)
   const [labProfile, setLabProfile] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [testOrder, setTestOrder] = useState(null)
+  const [existingReports, setExistingReports] = useState([]) // Already uploaded reports for order
 
   const reportTypes = [
     { value: 'blood_test', label: 'Blood Test' },
@@ -76,6 +78,10 @@ export default function LabUploadReport() {
         setReportTitle(res.data.tests_requested.join(', '))
       }
       setPatientExists(true)
+      // Load existing reports for this order
+      if (res.data.reports && res.data.reports.length > 0) {
+        setExistingReports(res.data.reports)
+      }
     } catch (err) {
       console.error('Failed to load test order:', err)
     }
@@ -112,20 +118,30 @@ export default function LabUploadReport() {
   }
 
   const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0]
-    if (selectedFile) {
-      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+    const selectedFiles = Array.from(e.target.files)
+    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+    
+    const validFiles = []
+    for (const selectedFile of selectedFiles) {
       if (!validTypes.includes(selectedFile.type)) {
-        setError('Please upload a PDF or image file (JPG, PNG)')
-        return
+        setError('Please upload PDF or image files (JPG, PNG) only')
+        continue
       }
       if (selectedFile.size > 10 * 1024 * 1024) {
-        setError('File size must be less than 10MB')
-        return
+        setError(`File ${selectedFile.name} is too large (max 10MB)`)
+        continue
       }
-      setFile(selectedFile)
+      validFiles.push(selectedFile)
+    }
+    
+    if (validFiles.length > 0) {
+      setFiles(prev => [...prev, ...validFiles])
       setError('')
     }
+  }
+  
+  const removeFile = (index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e) => {
@@ -135,8 +151,8 @@ export default function LabUploadReport() {
       setError('Please enter a valid patient email')
       return
     }
-    if (!file) {
-      setError('Please select a file to upload')
+    if (files.length === 0) {
+      setError('Please select at least one file to upload')
       return
     }
     if (!reportTitle.trim()) {
@@ -148,34 +164,48 @@ export default function LabUploadReport() {
     setLoading(true)
     setError('')
     setUploadProgress(0)
+    setUploadResults([])
+    setCurrentFileIndex(0)
 
+    const results = []
+    
     try {
-      const formData = new FormData()
-      formData.append('patient_email', email.trim().toLowerCase())
-      formData.append('report_file', file)
-      formData.append('report_title', reportTitle.trim())
-      formData.append('report_type', reportType)
-      formData.append('report_date', reportDate)
-      formData.append('referring_doctor', referringDoctor.trim())
-      formData.append('notes', notes.trim())
-      formData.append('send_email', sendEmail)
-      if (testOrderId) {
-        formData.append('test_order_id', testOrderId)
+      for (let i = 0; i < files.length; i++) {
+        setCurrentFileIndex(i)
+        const file = files[i]
+        
+        const formData = new FormData()
+        formData.append('patient_email', email.trim().toLowerCase())
+        formData.append('report_file', file)
+        // Add file number to title if multiple files
+        const fileTitle = files.length > 1 
+          ? `${reportTitle.trim()} (${i + 1}/${files.length})`
+          : reportTitle.trim()
+        formData.append('report_title', fileTitle)
+        formData.append('report_type', reportType)
+        formData.append('report_date', reportDate)
+        formData.append('referring_doctor', referringDoctor.trim())
+        formData.append('notes', notes.trim())
+        // Only send email on last file
+        formData.append('send_email', i === files.length - 1 ? sendEmail : false)
+        if (testOrderId) {
+          formData.append('test_order_id', testOrderId)
+        }
+
+        // Progress for this file
+        setUploadProgress(Math.round(((i) / files.length) * 100))
+
+        const res = await testOrderService.uploadReport(formData)
+        results.push({ file: file.name, ...res.data })
       }
-
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90))
-      }, 200)
-
-      const res = await testOrderService.uploadReport(formData)
       
-      clearInterval(progressInterval)
       setUploadProgress(100)
-      setUploadResult(res.data)
+      setUploadResults(results)
       setStep('success')
     } catch (err) {
       console.error('Upload error:', err)
       setError(err.response?.data?.error || 'Failed to upload report')
+      setUploadResults(results) // Show partial results
       setStep('error')
     } finally {
       setLoading(false)
@@ -184,11 +214,12 @@ export default function LabUploadReport() {
 
   const handleReset = () => {
     setStep('form')
-    setFile(null)
+    setFiles([])
     setReportTitle('')
     setNotes('')
     setError('')
-    setUploadResult(null)
+    setUploadResults([])
+    setCurrentFileIndex(0)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -341,33 +372,71 @@ export default function LabUploadReport() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Report File *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Report Files * <span className="text-gray-400 font-normal">(You can upload multiple files)</span>
+                  </label>
+                  
+                  {/* Already uploaded reports for this order */}
+                  {existingReports.length > 0 && (
+                    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-xl">
+                      <p className="text-sm font-medium text-green-800 mb-2 flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4" />
+                        Already uploaded for this order:
+                      </p>
+                      <ul className="space-y-1">
+                        {existingReports.map((report, idx) => (
+                          <li key={idx} className="text-sm text-green-700 flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            {report.report_title || `Report ${idx + 1}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
-                      file ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
+                      files.length > 0 ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
                     }`}
                   >
-                    <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" />
-                    {file ? (
-                      <div className="flex items-center justify-center gap-3">
-                        <FileText className="w-8 h-8 text-purple-600" />
-                        <div className="text-left">
-                          <p className="font-medium text-gray-800">{file.name}</p>
-                          <p className="text-sm text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
-                        </div>
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setFile(null); }} className="p-1 hover:bg-purple-200 rounded-full">
-                          <X className="w-5 h-5 text-purple-600" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <Upload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                        <p className="text-gray-600">Click to upload</p>
-                        <p className="text-sm text-gray-400">PDF, JPG, PNG (max 10MB)</p>
-                      </>
-                    )}
+                    <input 
+                      ref={fileInputRef} 
+                      type="file" 
+                      accept=".pdf,.jpg,.jpeg,.png" 
+                      onChange={handleFileChange} 
+                      className="hidden" 
+                      multiple 
+                    />
+                    <Upload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
+                    <p className="text-gray-600">Click to upload files</p>
+                    <p className="text-sm text-gray-400">PDF, JPG, PNG (max 10MB each)</p>
                   </div>
+                  
+                  {/* Selected files list */}
+                  {files.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-sm font-medium text-gray-700">{files.length} file(s) selected:</p>
+                      {files.map((file, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-5 h-5 text-purple-600" />
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{file.name}</p>
+                              <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                            </div>
+                          </div>
+                          <button 
+                            type="button" 
+                            onClick={(e) => { e.stopPropagation(); removeFile(idx); }} 
+                            className="p-1 hover:bg-purple-200 rounded-full"
+                          >
+                            <X className="w-4 h-4 text-purple-600" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -397,10 +466,10 @@ export default function LabUploadReport() {
 
                 <button
                   type="submit"
-                  disabled={!patientExists || !file || !reportTitle.trim()}
+                  disabled={!patientExists || files.length === 0 || !reportTitle.trim()}
                   className="w-full py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
                 >
-                  <Send className="w-5 h-5" /> Upload & Send Report
+                  <Send className="w-5 h-5" /> Upload {files.length > 1 ? `${files.length} Reports` : '& Send Report'}
                 </button>
               </form>
             </motion.div>
@@ -409,8 +478,15 @@ export default function LabUploadReport() {
           {step === 'uploading' && (
             <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
               <Loader2 className="w-16 h-16 text-purple-600 animate-spin mx-auto mb-6" />
-              <h2 className="text-2xl font-bold text-gray-800 mb-2">Uploading Report...</h2>
-              <p className="text-gray-600 mb-6">Analyzing for critical values</p>
+              <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                Uploading {files.length > 1 ? `Reports (${currentFileIndex + 1}/${files.length})` : 'Report'}...
+              </h2>
+              <p className="text-gray-600 mb-2">Analyzing for critical values</p>
+              {files.length > 1 && (
+                <p className="text-sm text-gray-500 mb-4">
+                  Current: {files[currentFileIndex]?.name}
+                </p>
+              )}
               <div className="max-w-xs mx-auto h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-purple-600 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
@@ -419,21 +495,45 @@ export default function LabUploadReport() {
 
           {step === 'success' && (
             <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-12">
-              <div className={`w-20 h-20 ${uploadResult?.has_critical_values ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                {uploadResult?.has_critical_values ? <AlertTriangle className="w-10 h-10 text-orange-600" /> : <CheckCircle className="w-10 h-10 text-green-600" />}
+              <div className={`w-20 h-20 ${uploadResults.some(r => r.has_critical_values) ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                {uploadResults.some(r => r.has_critical_values) ? <AlertTriangle className="w-10 h-10 text-orange-600" /> : <CheckCircle className="w-10 h-10 text-green-600" />}
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                {uploadResult?.has_critical_values ? 'Report Sent with Critical Values!' : 'Report Sent!'}
+                {uploadResults.length > 1 
+                  ? `${uploadResults.length} Reports Uploaded!` 
+                  : uploadResults[0]?.has_critical_values 
+                    ? 'Report Sent with Critical Values!' 
+                    : 'Report Sent!'}
               </h2>
-              <p className="text-gray-600 mb-6">The report has been sent to the patient.</p>
+              <p className="text-gray-600 mb-6">The report(s) have been sent to the patient.</p>
 
-              {uploadResult?.has_critical_values && (
+              {/* Show uploaded files */}
+              {uploadResults.length > 1 && (
+                <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left">
+                  <p className="font-medium text-gray-700 mb-2">Uploaded Files:</p>
+                  <ul className="space-y-1">
+                    {uploadResults.map((result, idx) => (
+                      <li key={idx} className="text-sm flex items-center gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                        <span className="text-gray-700">{result.file}</span>
+                        {result.has_critical_values && (
+                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">Critical</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {uploadResults.some(r => r.has_critical_values) && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 text-left">
                   <p className="font-semibold text-orange-800">Critical Values Detected</p>
-                  <p className="text-sm text-orange-700">{uploadResult.critical_values_count} abnormal value(s) found.</p>
-                  {uploadResult.abnormal_values?.length > 0 && (
+                  <p className="text-sm text-orange-700">
+                    {uploadResults.reduce((sum, r) => sum + (r.critical_values_count || 0), 0)} abnormal value(s) found.
+                  </p>
+                  {uploadResults.flatMap(r => r.abnormal_values || []).length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {uploadResult.abnormal_values.map((val, idx) => (
+                      {[...new Set(uploadResults.flatMap(r => r.abnormal_values || []))].map((val, idx) => (
                         <span key={idx} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">{val}</span>
                       ))}
                     </div>
@@ -443,7 +543,7 @@ export default function LabUploadReport() {
 
               <div className="flex gap-3">
                 <button onClick={handleReset} className="flex-1 px-4 py-3 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">
-                  Upload Another
+                  Upload More
                 </button>
                 <Link to="/laboratory/sent" className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2">
                   <Eye className="w-5 h-5" /> View Sent

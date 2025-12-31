@@ -15767,3 +15767,264 @@ WARNING 2025-12-31 00:38:32,344 log 8209 123145661079552 Unauthorized: /api/auth
 WARNING 2025-12-31 00:38:32,344 log 8209 123145593921536 Unauthorized: /api/auth/token/refresh/
 WARNING 2025-12-31 00:38:32,347 log 8209 123145475321856 Unauthorized: /api/auth/token/refresh/
 WARNING 2025-12-31 00:38:32,352 log 8209 123145560342528 Unauthorized: /api/auth/token/refresh/
+INFO 2025-12-31 19:06:58,874 autoreload 35472 24732 Watching for file changes with StatReloader
+INFO 2025-12-31 19:08:29,657 _universal 35472 26052 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions?restype=REDACTED'
+Request method: 'PUT'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'fdfce346-e64d-11f0-b187-c8154e56ede2'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-31 19:08:31,061 _universal 35472 26052 Response status: 409
+Response headers:
+    'Content-Length': '230'
+    'Content-Type': 'application/xml'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f9bf5d36-701e-0033-135a-7a93fe000000'
+    'x-ms-client-request-id': 'fdfce346-e64d-11f0-b187-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-error-code': 'ContainerAlreadyExists'
+    'Date': 'Wed, 31 Dec 2025 13:38:30 GMT'
+INFO 2025-12-31 19:08:31,068 _universal 35472 26052 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions/lab-reports/20251231_190829_deeb4070_lab_1592d095-211d-4a68-8ae0-075284822814_1767188309.640888.pdf'
+Request method: 'PUT'
+Request headers:
+    'Content-Length': '2633'
+    'x-ms-blob-type': 'REDACTED'
+    'x-ms-blob-content-type': 'REDACTED'
+    'x-ms-version': 'REDACTED'
+    'Content-Type': 'application/octet-stream'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': 'fed4463b-e64d-11f0-b15e-c8154e56ede2'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2025-12-31 19:08:31,275 _universal 35472 26052 Response status: 201
+Response headers:
+    'Content-Length': '0'
+    'Content-MD5': 'REDACTED'
+    'Last-Modified': 'Wed, 31 Dec 2025 13:38:31 GMT'
+    'ETag': '"0x8DE4871E31822F8"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': 'f9bf5d76-701e-0033-4d5a-7a93fe000000'
+    'x-ms-client-request-id': 'fed4463b-e64d-11f0-b15e-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-content-crc64': 'REDACTED'
+    'x-ms-request-server-encrypted': 'REDACTED'
+    'Date': 'Wed, 31 Dec 2025 13:38:30 GMT'
+INFO 2025-12-31 19:08:35,147 views_laboratory 35472 26052 OCR completed. Text length: 573
+INFO 2025-12-31 19:08:43,341 _client 35472 26052 HTTP Request: POST https://medbuddy-openai.openai.azure.com//openai/deployments/gpt-4o/chat/completions?api-version=2024-02-15-preview "HTTP/1.1 200 OK"
+INFO 2025-12-31 19:08:43,357 services 35472 26052 Lab report analysis found 9 abnormal values
+INFO 2025-12-31 19:08:43,357 services 35472 26052 Abnormal values: [{'test_name': 'Hemoglobin', 'result': '9.2 g/dL', 'expected': '13.5 – 17.5', 'severity': 'significant', 'meaning': 'Low hemoglobin indicates anemia, which may cause fatigue, weakness, and shortness of breath.'}, {'test_name': 'RBC Count', 'result': '3.1 million/µL', 'expected': '4.5 – 5.9', 'severity': 'significant', 'meaning': 'Low RBC count suggests anemia, which can impair oxygen delivery to tissues.'}, {'test_name': 'WBC Count', 'result': '15,800 /µL', 'expected': '4,000 – 11,000', 'severity': 'moderate', 'meaning': 'Elevated WBC count may indicate an infection or inflammation.'}, {'test_name': 'Platelet Count', 'result': '90,000 /µL', 'expected': '150,000 – 450,000', 'severity': 'significant', 'meaning': 'Low platelet count (thrombocytopenia) increases the risk of bleeding and bruising.'}, {'test_name': 'Hematocrit', 'result': '28%', 'expected': '41 – 53%', 'severity': 'significant', 'meaning': 'Low hematocrit indicates anemia and reduced oxygen-carrying capacity of the blood.'}, {'test_name': 'MCV', 'result': '72 fL', 'expected': '80 – 96', 'severity': 'mild', 'meaning': 'Low MCV suggests microcytic anemia, often associated with iron deficiency.'}, {'test_name': 'MCH', 'result': '24 pg', 'expected': '27 – 33', 'severity': 'mild', 'meaning': 'Low MCH indicates hypochromic anemia, where red blood cells have less hemoglobin.'}, {'test_name': 'Neutrophils', 'result': '82%', 'expected': '40 – 60%', 'severity': 'moderate', 'meaning': 'Elevated neutrophils suggest an ongoing bacterial infection or inflammation.'}, {'test_name': 'Lymphocytes', 'result': '10%', 'expected': '20 – 40%', 'severity': 'moderate', 'meaning': 'Low lymphocyte count may indicate a weakened immune response or stress.'}]
+INFO 2025-12-31 19:08:43,357 views_laboratory 35472 26052 Analysis summary: The lab report for Rahul Sharma shows multiple abnormal values, including low hemoglobin, RBC count, platelet count, hematocrit, MCV, MCH, and lymphocytes. Additionally, WBC count and neutrophils are elevated, suggesting anemia, possible infection, and thrombocytopenia.
+INFO 2025-12-31 19:08:43,357 views_laboratory 35472 26052 Found 9 abnormal values from AI
+INFO 2025-12-31 19:08:43,362 views_laboratory 35472 26052 Created alert for: Hemoglobin = 9.2 g/dL
+INFO 2025-12-31 19:08:43,370 views_laboratory 35472 26052 Created alert for: RBC Count = 3.1 million/µL
+INFO 2025-12-31 19:08:43,374 views_laboratory 35472 26052 Created alert for: WBC Count = 15,800 /µL
+INFO 2025-12-31 19:08:43,374 views_laboratory 35472 26052 Created alert for: Platelet Count = 90,000 /µL
+INFO 2025-12-31 19:08:43,374 views_laboratory 35472 26052 Created alert for: Hematocrit = 28%
+INFO 2025-12-31 19:08:43,374 views_laboratory 35472 26052 Created alert for: MCV = 72 fL
+INFO 2025-12-31 19:08:43,374 views_laboratory 35472 26052 Created alert for: MCH = 24 pg
+INFO 2025-12-31 19:08:43,383 views_laboratory 35472 26052 Created alert for: Neutrophils = 82%
+INFO 2025-12-31 19:08:43,383 views_laboratory 35472 26052 Created alert for: Lymphocytes = 10%
+INFO 2025-12-31 19:08:43,383 views_laboratory 35472 26052 Report saved. Has critical: True, Abnormal count: 9
+INFO 2025-12-31 19:08:44,023 _universal 35472 26052 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions?restype=REDACTED'
+Request method: 'PUT'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '068d27ab-e64e-11f0-8f65-c8154e56ede2'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-31 19:08:45,378 _universal 35472 26052 Response status: 409
+Response headers:
+    'Content-Length': '230'
+    'Content-Type': 'application/xml'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '21763fbf-801e-009e-295a-7adf8b000000'
+    'x-ms-client-request-id': '068d27ab-e64e-11f0-8f65-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-error-code': 'ContainerAlreadyExists'
+    'Date': 'Wed, 31 Dec 2025 13:38:44 GMT'
+INFO 2025-12-31 19:08:45,380 _universal 35472 26052 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions/lab-reports/20251231_190844_3fd8ec2e_lab_1592d095-211d-4a68-8ae0-075284822814_1767188324.022681.pdf'
+Request method: 'PUT'
+Request headers:
+    'Content-Length': '285082'
+    'x-ms-blob-type': 'REDACTED'
+    'x-ms-blob-content-type': 'REDACTED'
+    'x-ms-version': 'REDACTED'
+    'Content-Type': 'application/octet-stream'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '075bd056-e64e-11f0-92fc-c8154e56ede2'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2025-12-31 19:08:46,494 _universal 35472 26052 Response status: 201
+Response headers:
+    'Content-Length': '0'
+    'Content-MD5': 'REDACTED'
+    'Last-Modified': 'Wed, 31 Dec 2025 13:38:46 GMT'
+    'ETag': '"0x8DE4871EC251314"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '2176400c-801e-009e-6e5a-7adf8b000000'
+    'x-ms-client-request-id': '075bd056-e64e-11f0-92fc-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-content-crc64': 'REDACTED'
+    'x-ms-request-server-encrypted': 'REDACTED'
+    'Date': 'Wed, 31 Dec 2025 13:38:45 GMT'
+INFO 2025-12-31 19:08:51,289 views_laboratory 35472 26052 OCR completed. Text length: 2279
+INFO 2025-12-31 19:08:56,518 _client 35472 26052 HTTP Request: POST https://medbuddy-openai.openai.azure.com//openai/deployments/gpt-4o/chat/completions?api-version=2024-02-15-preview "HTTP/1.1 200 OK"
+INFO 2025-12-31 19:08:56,523 services 35472 26052 Lab report analysis found 2 abnormal values
+INFO 2025-12-31 19:08:56,523 services 35472 26052 Abnormal values: [{'test_name': 'Fluid in joint', 'result': 'Mild joint effusion', 'expected': 'No effusion', 'severity': 'mild', 'meaning': 'Mild joint effusion indicates the presence of excess fluid in the knee joint, which may be associated with inflammation or injury.'}, {'test_name': 'Medial meniscus', 'result': 'Focal horizontal oblique tear in posterior horn-body junction', 'expected': 'No tear', 'severity': 'significant', 'meaning': 'A tear in the medial meniscus suggests damage to the cartilage, which can cause pain, swelling, and mechanical symptoms like clicking or locking of the knee.'}]
+INFO 2025-12-31 19:08:56,523 views_laboratory 35472 26052 Analysis summary: The MRI report of the left knee reveals two abnormalities: mild joint effusion and a focal horizontal oblique tear in the posterior horn-body junction of the medial meniscus. All other structures, including ligaments, cartilage, bones, muscles, and nerves, appear normal.
+INFO 2025-12-31 19:08:56,523 views_laboratory 35472 26052 Found 2 abnormal values from AI
+INFO 2025-12-31 19:08:56,523 views_laboratory 35472 26052 Created alert for: Fluid in joint = Mild joint effusion
+INFO 2025-12-31 19:08:56,523 views_laboratory 35472 26052 Created alert for: Medial meniscus = Focal horizontal oblique tear in posterior horn-body junction
+INFO 2025-12-31 19:08:56,540 views_laboratory 35472 26052 Report saved. Has critical: True, Abnormal count: 2
+INFO 2025-12-31 19:08:57,073 azure_email_service 35472 26052 Azure Email client initialized successfully
+INFO 2025-12-31 19:08:57,097 _universal 35472 26052 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '387204'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '0e57170e-e64e-11f0-8957-c8154e56ede2'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2025-12-31 19:08:59,473 _universal 35472 26052 Response status: 202
+Response headers:
+    'Date': 'Wed, 31 Dec 2025 13:38:59 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2025-12-31 19:08:59,473 _universal 35472 19612 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/921f6691-e2d1-4c10-ab41-1f6ef7b8d70d?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '0e57170e-e64e-11f0-8957-c8154e56ede2'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-31 19:09:00,424 _universal 35472 19612 Response status: 200
+Response headers:
+    'Date': 'Wed, 31 Dec 2025 13:39:00 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2025-12-31 19:09:03,428 _universal 35472 19612 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/921f6691-e2d1-4c10-ab41-1f6ef7b8d70d?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '0e57170e-e64e-11f0-8957-c8154e56ede2'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-31 19:09:03,957 _universal 35472 19612 Response status: 200
+Response headers:
+    'Date': 'Wed, 31 Dec 2025 13:39:03 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2025-12-31 19:09:03,957 azure_email_service 35472 26052 Azure Email with attachment sent successfully to kaivalhmehta@gmail.com
+INFO 2025-12-31 19:11:41,186 _universal 35472 22724 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions?restype=REDACTED'
+Request method: 'PUT'
+Request headers:
+    'x-ms-version': 'REDACTED'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '702604a1-e64e-11f0-bdd2-c8154e56ede2'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2025-12-31 19:11:42,518 _universal 35472 22724 Response status: 409
+Response headers:
+    'Content-Length': '230'
+    'Content-Type': 'application/xml'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '3640c543-601e-002f-515b-7ac19e000000'
+    'x-ms-client-request-id': '702604a1-e64e-11f0-bdd2-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-error-code': 'ContainerAlreadyExists'
+    'Date': 'Wed, 31 Dec 2025 13:41:42 GMT'
+INFO 2025-12-31 19:11:42,518 _universal 35472 22724 Request URL: 'https://medbuddystorage.blob.core.windows.net/prescriptions/lab-reports/20251231_191141_851b6112_patient_1592d095-211d-4a68-8ae0-075284822814_CBC_Abnormal_Lab_Report.pdf'
+Request method: 'PUT'
+Request headers:
+    'Content-Length': '2633'
+    'x-ms-blob-type': 'REDACTED'
+    'x-ms-blob-content-type': 'REDACTED'
+    'x-ms-version': 'REDACTED'
+    'Content-Type': 'application/octet-stream'
+    'Accept': 'application/xml'
+    'User-Agent': 'azsdk-python-storage-blob/12.19.0 Python/3.11.9 (Windows-10-10.0.26100-SP0)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-client-request-id': '70f15a36-e64e-11f0-a189-c8154e56ede2'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2025-12-31 19:11:42,720 _universal 35472 22724 Response status: 201
+Response headers:
+    'Content-Length': '0'
+    'Content-MD5': 'REDACTED'
+    'Last-Modified': 'Wed, 31 Dec 2025 13:41:42 GMT'
+    'ETag': '"0x8DE48725534CDE0"'
+    'Server': 'Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0'
+    'x-ms-request-id': '3640c5a6-601e-002f-2c5b-7ac19e000000'
+    'x-ms-client-request-id': '70f15a36-e64e-11f0-a189-c8154e56ede2'
+    'x-ms-version': 'REDACTED'
+    'x-ms-content-crc64': 'REDACTED'
+    'x-ms-request-server-encrypted': 'REDACTED'
+    'Date': 'Wed, 31 Dec 2025 13:41:42 GMT'
+INFO 2025-12-31 19:11:46,652 views 35472 22724 Patient uploaded report. OCR text length: 573
+INFO 2025-12-31 19:11:57,420 _client 35472 22724 HTTP Request: POST https://medbuddy-openai.openai.azure.com//openai/deployments/gpt-4o/chat/completions?api-version=2024-02-15-preview "HTTP/1.1 200 OK"
+INFO 2025-12-31 19:11:57,436 services 35472 22724 Lab report analysis found 9 abnormal values
+INFO 2025-12-31 19:11:57,436 services 35472 22724 Abnormal values: [{'test_name': 'Hemoglobin', 'result': '9.2 g/dL', 'expected': '13.5 – 17.5', 'severity': 'significant', 'meaning': 'Low hemoglobin indicates anemia, which may cause fatigue, weakness, and shortness of breath.'}, {'test_name': 'RBC Count', 'result': '3.1 million/µL', 'expected': '4.5 – 5.9', 'severity': 'significant', 'meaning': 'Low RBC count suggests anemia, which may impair oxygen transport in the body.'}, {'test_name': 'WBC Count', 'result': '15,800 /µL', 'expected': '4,000 – 11,000', 'severity': 'moderate', 'meaning': 'Elevated WBC count may indicate an ongoing infection or inflammation.'}, {'test_name': 'Platelet Count', 'result': '90,000 /µL', 'expected': '150,000 – 450,000', 'severity': 'significant', 'meaning': 'Low platelet count (thrombocytopenia) increases the risk of bleeding and bruising.'}, {'test_name': 'Hematocrit', 'result': '28%', 'expected': '41 – 53%', 'severity': 'significant', 'meaning': 'Low hematocrit indicates anemia and reduced oxygen-carrying capacity of the blood.'}, {'test_name': 'MCV', 'result': '72 fL', 'expected': '80 – 96', 'severity': 'mild', 'meaning': 'Low MCV suggests microcytic anemia, often associated with iron deficiency.'}, {'test_name': 'MCH', 'result': '24 pg', 'expected': '27 – 33', 'severity': 'mild', 'meaning': 'Low MCH indicates hypochromic anemia, where red blood cells have less hemoglobin.'}, {'test_name': 'Neutrophils', 'result': '82%', 'expected': '40 – 60%', 'severity': 'moderate', 'meaning': 'High neutrophil percentage suggests bacterial infection or inflammation.'}, {'test_name': 'Lymphocytes', 'result': '10%', 'expected': '20 – 40%', 'severity': 'moderate', 'meaning': 'Low lymphocyte percentage may indicate a weakened immune response or stress.'}]
+INFO 2025-12-31 19:11:57,469 views 35472 22724 Patient report analyzed. Has critical: True, Abnormal count: 9
+INFO 2025-12-31 19:11:57,469 views 35472 22724 Sending email to kaivalhmehta@gmail.com, has_critical=True, test_names=['Hemoglobin', 'RBC Count', 'WBC Count', 'Platelet Count', 'Hematocrit', 'MCV', 'MCH', 'Neutrophils', 'Lymphocytes']
+ERROR 2025-12-31 19:11:57,469 views 35472 22724 Failed to send self-upload confirmation email: AzureEmailService.send_patient_self_upload_confirmation() got an unexpected keyword argument 'has_critical_values'
+ERROR 2025-12-31 19:11:57,469 views 35472 22724 Traceback (most recent call last):
+  File "C:\Users\Kaival\Desktop\MedBuddy\MedBuddy\backend\prescriptions\views.py", line 804, in post
+    AzureEmailService.send_patient_self_upload_confirmation(
+TypeError: AzureEmailService.send_patient_self_upload_confirmation() got an unexpected keyword argument 'has_critical_values'
+
+INFO 2025-12-31 19:18:39,624 autoreload 35472 24732 C:\Users\Kaival\Desktop\MedBuddy\MedBuddy\backend\prescriptions\views.py changed, reloading.
+INFO 2025-12-31 19:18:40,626 autoreload 15952 27956 Watching for file changes with StatReloader
+INFO 2025-12-31 19:18:54,428 autoreload 15952 27956 C:\Users\Kaival\Desktop\MedBuddy\MedBuddy\backend\prescriptions\azure_email_service.py changed, reloading.
+INFO 2025-12-31 19:18:55,318 autoreload 25960 24156 Watching for file changes with StatReloader
+INFO 2025-12-31 19:19:13,727 autoreload 25960 24156 C:\Users\Kaival\Desktop\MedBuddy\MedBuddy\backend\users\views_laboratory.py changed, reloading.
+INFO 2025-12-31 19:19:14,659 autoreload 32432 30728 Watching for file changes with StatReloader

@@ -65,6 +65,10 @@ class AzureEmailService:
         Send email using Azure Communication Services
         Falls back to Django email if Azure not available
         """
+        print(f"=== AzureEmailService.send_email CALLED ===")
+        print(f"  to_email: {to_email}")
+        print(f"  subject: {subject}")
+        
         if text_content is None:
             import re
             text_content = re.sub('<[^<]+?>', '', html_content)
@@ -75,10 +79,17 @@ class AzureEmailService:
         client = cls.get_client()
         sender_email = getattr(settings, 'AZURE_EMAIL_SENDER', None)
         
+        print(f"  client: {client}")
+        print(f"  sender_email: {sender_email}")
+        
         if client and sender_email:
-            return cls._send_via_azure(client, sender_email, to_email, subject, html_content, text_content)
+            result = cls._send_via_azure(client, sender_email, to_email, subject, html_content, text_content)
+            print(f"  Azure send result: {result}")
+            return result
         else:
-            return cls._send_via_django(to_email, subject, html_content, text_content)
+            result = cls._send_via_django(to_email, subject, html_content, text_content)
+            print(f"  Django send result: {result}")
+            return result
     
     @classmethod
     def _print_email_to_console(cls, to_email, subject, text_content):
@@ -1952,13 +1963,49 @@ MedBuddy Team
             return cls.send_email(patient_email, subject, html_content, text_content)
 
     @classmethod
-    def send_patient_self_upload_confirmation(cls, patient_email, patient_name, report_title):
+    def send_patient_self_upload_confirmation(cls, patient_email, patient_name, report_title,
+                                               has_critical_values=False, critical_message=None,
+                                               test_names=None):
         """
         Send confirmation email when patient uploads their own lab report
+        Now also supports critical value warnings after analysis
         """
+        print(f"=== send_patient_self_upload_confirmation CALLED ===")
+        print(f"  patient_email: {patient_email}")
+        print(f"  patient_name: {patient_name}")
+        print(f"  report_title: {report_title}")
+        print(f"  has_critical_values: {has_critical_values}")
+        
         subject = f"✅ Lab Report Uploaded Successfully: {report_title}"
+        if has_critical_values:
+            subject = f"⚠️ Lab Report Analysis Complete - Action Required: {report_title}"
         
         greeting = f"Dear {patient_name}," if patient_name else "Hello,"
+        
+        critical_box = ""
+        if has_critical_values:
+            critical_box = f"""
+            <div class="danger-box">
+                <strong>⚠️ Critical Values Detected</strong><br>
+                {critical_message or 'Some values in your report require immediate medical attention. Please consult your doctor.'}
+            </div>
+            """
+        
+        tests_section = ""
+        if test_names:
+            tests_list = "".join([f"<li>{test}</li>" for test in test_names])
+            tests_section = f"""
+            <div class="info-box">
+                <strong>🧪 Abnormal Values Found:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    {tests_list}
+                </ul>
+            </div>
+            """
+        
+        header_class = "header-danger" if has_critical_values else "header-success"
+        header_title = "⚠️ Analysis Complete" if has_critical_values else "✅ Upload Successful"
+        header_subtitle = "Action Required" if has_critical_values else "Your Lab Report Has Been Saved"
         
         html_content = f"""
         <!DOCTYPE html>
@@ -1966,29 +2013,33 @@ MedBuddy Team
         <head>{cls._get_base_styles()}</head>
         <body>
             <div class="container">
-                <div class="header header-success">
-                    <div class="logo">✅ Upload Successful</div>
-                    <p>Your Lab Report Has Been Saved</p>
+                <div class="header {header_class}">
+                    <div class="logo">{header_title}</div>
+                    <p>{header_subtitle}</p>
                 </div>
                 <div class="content">
                     <p>{greeting}</p>
-                    <p>Your lab report has been successfully uploaded to MedBuddy.</p>
+                    <p>Your lab report has been {'analyzed' if has_critical_values else 'successfully uploaded to MedBuddy'}.</p>
                     
-                    <div class="success-box">
+                    {critical_box}
+                    
+                    <div class="{'warning-box' if has_critical_values else 'success-box'}">
                         <strong>📋 Report Details</strong><br>
                         <div class="detail-row">
                             <span class="detail-label">Report:</span>
                             <span class="detail-value">{report_title}</span>
                         </div>
                         <div class="detail-row">
-                            <span class="detail-label">Uploaded:</span>
+                            <span class="detail-label">{'Analyzed' if has_critical_values else 'Uploaded'}:</span>
                             <span class="detail-value">{format_nyc_datetime()}</span>
                         </div>
                         <div class="detail-row">
                             <span class="detail-label">Status:</span>
-                            <span class="detail-value"><span class="badge badge-success">Ready to View</span></span>
+                            <span class="detail-value"><span class="badge {'badge-warning' if has_critical_values else 'badge-success'}">{'Review Required' if has_critical_values else 'Ready to View'}</span></span>
                         </div>
                     </div>
+                    
+                    {tests_section}
                     
                     <p>Your report is now securely stored and ready to view anytime from your MedBuddy dashboard.</p>
                     
@@ -1996,9 +2047,9 @@ MedBuddy Team
                         <a href="{settings.FRONTEND_URL}/reports" class="btn btn-primary">View My Reports</a>
                     </center>
                     
-                    <div class="info-box">
-                        <strong>💡 Tip:</strong> You can share this report with your healthcare providers 
-                        directly from MedBuddy for better coordinated care.
+                    <div class="{'danger-box' if has_critical_values else 'info-box'}">
+                        <strong>{'⚠️ Important:' if has_critical_values else '💡 Tip:'}</strong> 
+                        {'Please consult with your healthcare provider about these results as soon as possible.' if has_critical_values else 'You can share this report with your healthcare providers directly from MedBuddy for better coordinated care.'}
                     </div>
                 </div>
                 {cls._get_footer()}
@@ -2010,7 +2061,9 @@ MedBuddy Team
         text_content = f"""
 {greeting}
 
-Your lab report "{report_title}" has been successfully uploaded to MedBuddy.
+Your lab report "{report_title}" has been {'analyzed' if has_critical_values else 'successfully uploaded to MedBuddy'}.
+
+{'⚠️ CRITICAL VALUES DETECTED - Please consult your doctor immediately.' if has_critical_values else ''}
 
 View your reports at: {settings.FRONTEND_URL}/reports
 

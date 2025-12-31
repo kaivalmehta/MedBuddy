@@ -41,6 +41,7 @@ urlpatterns = [
     # REPORT UPLOAD WITH ANALYSIS
     # ============================================
     path('lab/upload-report/', views.LabUploadReportWithAnalysisView.as_view(), name='lab_upload_report_analysis'),
+    path('lab/orders/<uuid:order_id>/complete/', views.LabCompleteOrderView.as_view(), name='lab_complete_order'),
     
     # ============================================
     # CRITICAL ALERTS
