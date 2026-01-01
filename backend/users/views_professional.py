@@ -338,6 +338,235 @@ class DoctorSentPrescriptionsView(views.APIView):
         })
 
 
+class DoctorAnalyzePrescriptionView(views.APIView):
+    """Allow doctor to analyze a prescription they sent"""
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def post(self, request, prescription_id):
+        from prescriptions.models import Prescription, PrescriptionDrug, DrugInteraction
+        from prescriptions.services import AzureServices
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Verify doctor sent this prescription
+        prescription = get_object_or_404(Prescription, pk=prescription_id, sent_by=request.user)
+        
+        azure_svc = AzureServices()
+        
+        # Step 1: OCR if needed
+        if not prescription.ocr_raw_text:
+            try:
+                ocr_result = azure_svc.extract_text(prescription.image_url)
+                prescription.ocr_raw_text = ocr_result.get('text', '')
+                prescription.ocr_confidence = ocr_result.get('confidence', 0)
+                prescription.save()
+            except Exception as e:
+                logger.error(f"OCR failed: {e}")
+        
+        if not prescription.ocr_raw_text:
+            return Response(
+                {'error': 'Could not extract text from prescription image. Please try uploading a clearer image.'},
+                status=400
+            )
+        
+        # Step 2: Parse prescription
+        try:
+            parsed_data = azure_svc.parse_prescription(prescription.ocr_raw_text)
+        except Exception as e:
+            logger.error(f"Parsing failed: {e}")
+            parsed_data = {"medications": []}
+        
+        prescription.parsed_data = parsed_data
+        prescription.doctor_name = parsed_data.get('doctor_name', '') or prescription.doctor_name
+        prescription.clinic_name = parsed_data.get('clinic_name', '') or prescription.clinic_name
+        
+        if parsed_data.get('prescription_date'):
+            try:
+                from datetime import datetime
+                prescription.prescription_date = datetime.strptime(
+                    parsed_data['prescription_date'], '%Y-%m-%d'
+                ).date()
+            except:
+                pass
+        
+        # Step 3: Create drug records
+        PrescriptionDrug.objects.filter(prescription=prescription).delete()
+        drugs = []
+        
+        for drug_data in parsed_data.get('medications', []):
+            drug = PrescriptionDrug.objects.create(
+                prescription=prescription,
+                drug_name=drug_data.get('drug_name', 'Unknown'),
+                generic_name=drug_data.get('generic_name', ''),
+                dosage=drug_data.get('dosage', ''),
+                frequency=drug_data.get('frequency', ''),
+                duration=drug_data.get('duration', ''),
+                instructions=drug_data.get('instructions', ''),
+                category=drug_data.get('category', 'other'),
+                primary_use=drug_data.get('primary_use', ''),
+                mechanism=drug_data.get('mechanism', ''),
+                common_side_effects=drug_data.get('side_effects', []),
+                generic_alternatives=drug_data.get('alternatives', [])
+            )
+            drugs.append(drug)
+        
+        # Step 4: Get patient health profile for safety analysis
+        try:
+            hp = prescription.user.health_profile
+            health_data = {
+                'conditions': hp.medical_conditions or [],
+                'allergies': hp.allergies or [],
+                'current_meds': hp.current_medications or [],
+                'lifestyle': hp.lifestyle_factors or {}
+            }
+        except:
+            health_data = {'conditions': [], 'allergies': [], 'current_meds': [], 'lifestyle': {}}
+        
+        # Step 5: Comprehensive safety analysis
+        if drugs:
+            try:
+                safety_result = azure_svc.analyze_safety_comprehensive(
+                    drugs=[{
+                        'name': d.drug_name,
+                        'generic': d.generic_name,
+                        'dosage': d.dosage,
+                        'frequency': d.frequency
+                    } for d in drugs],
+                    health_profile=health_data
+                )
+            except Exception as e:
+                logger.error(f"Safety analysis failed: {e}")
+                safety_result = azure_svc._empty_safety_report()
+            
+            # Save overall safety to prescription
+            prescription.overall_safety_percentage = safety_result.get('overall_safety_percentage')
+            prescription.safety_status = safety_result.get('safety_status', 'safe')
+            prescription.safety_summary = safety_result.get('safety_summary', '')
+            prescription.safety_report = safety_result
+            
+            # Step 6: Update individual drug safety
+            individual_safety = {
+                item['drug_name'].lower(): item 
+                for item in safety_result.get('individual_drug_safety', [])
+            }
+            
+            for drug in drugs:
+                drug_safety = individual_safety.get(drug.drug_name.lower(), {})
+                drug.safety_percentage = drug_safety.get('safety_percentage', 100)
+                drug.safety_status = drug_safety.get('safety_status', 'safe')
+                drug.is_safe_to_take = drug_safety.get('is_safe_to_take', True)
+                drug.requires_monitoring = drug_safety.get('requires_monitoring', False)
+                drug.safety_concerns = drug_safety.get('concerns', [])
+                drug.special_instructions = drug_safety.get('special_instructions', '')
+                drug.save()
+            
+            # Step 7: Create detailed interaction records
+            self._create_interaction_records(drugs, safety_result)
+        
+        prescription.status = 'analyzed'
+        prescription.save()
+        
+        # Return analyzed data
+        medications_data = []
+        total_interactions = 0
+        critical_warnings = 0
+        
+        for d in prescription.drugs.all():
+            interactions = []
+            for inter in d.interactions.all():
+                interactions.append({
+                    'type': inter.interaction_type,
+                    'severity': inter.severity,
+                    'interacting_item': inter.interacting_item,
+                    'title': inter.title,
+                    'description': inter.description,
+                    'recommendation': inter.recommendation
+                })
+                total_interactions += 1
+                if inter.severity in ['severe', 'critical']:
+                    critical_warnings += 1
+            
+            medications_data.append({
+                'id': str(d.id),
+                'drug_name': d.drug_name,
+                'generic_name': d.generic_name,
+                'dosage': d.dosage,
+                'frequency': d.frequency,
+                'duration': d.duration,
+                'quantity': d.quantity,
+                'instructions': d.instructions,
+                'category': d.category,
+                'primary_use': d.primary_use,
+                'safety_percentage': d.safety_percentage,
+                'safety_status': d.safety_status,
+                'is_safe_to_take': d.is_safe_to_take,
+                'requires_monitoring': d.requires_monitoring,
+                'special_instructions': d.special_instructions,
+                'common_side_effects': d.common_side_effects or [],
+                'interactions': interactions,
+            })
+        
+        return Response({
+            'id': str(prescription.id),
+            'status': prescription.status,
+            'drugs_count': len(medications_data),
+            'overall_safety_percentage': prescription.overall_safety_percentage,
+            'safety_status': prescription.safety_status,
+            'total_interactions': total_interactions,
+            'critical_warnings': critical_warnings,
+            'medications': medications_data
+        })
+    
+    def _create_interaction_records(self, drugs, safety_result):
+        """Create DrugInteraction records from safety analysis"""
+        from prescriptions.models import DrugInteraction
+        
+        drug_map = {d.drug_name.lower(): d for d in drugs}
+        
+        # Drug-Drug Interactions
+        for interaction in safety_result.get('drug_drug_interactions', []):
+            drug = drug_map.get(interaction.get('drug1', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_drug',
+                    severity=interaction.get('severity', 'moderate'),
+                    interacting_item=interaction.get('drug2', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    mechanism=interaction.get('mechanism', ''),
+                    recommendation=interaction.get('recommendation', '')
+                )
+        
+        # Drug-Condition Interactions
+        for interaction in safety_result.get('drug_condition_interactions', []):
+            drug = drug_map.get(interaction.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_condition',
+                    severity=interaction.get('severity', 'moderate'),
+                    interacting_item=interaction.get('condition', ''),
+                    title=interaction.get('title', ''),
+                    description=interaction.get('description', ''),
+                    recommendation=interaction.get('recommendation', '')
+                )
+        
+        # Drug-Allergy Interactions
+        for interaction in safety_result.get('drug_allergy_interactions', []):
+            drug = drug_map.get(interaction.get('drug', '').lower())
+            if drug:
+                DrugInteraction.objects.create(
+                    prescription_drug=drug,
+                    interaction_type='drug_allergy',
+                    severity=interaction.get('severity', 'severe'),
+                    interacting_item=interaction.get('allergy', ''),
+                    title=interaction.get('title', f"Potential allergy reaction"),
+                    description=interaction.get('description', ''),
+                    recommendation=interaction.get('recommendation', 'Consult doctor')
+                )
+
+
 # ============================================
 # PATIENT ACCESS / OTP VERIFICATION VIEWS
 # ============================================
@@ -556,11 +785,11 @@ class ViewPatientHistoryView(views.APIView):
             'drugs__reminders'
         ).order_by('-created_at')[:20]
         
-        # Get lab reports (non-duplicate)
+        # Get lab reports (non-duplicate) with prefetched files
         reports = LabReport.objects.filter(
             user=patient,
             is_duplicate=False
-        ).order_by('-created_at')[:20]
+        ).prefetch_related('files').order_by('-created_at')[:20]
         
         # Get health profile
         try:
@@ -575,6 +804,87 @@ class ViewPatientHistoryView(views.APIView):
             context={'patient': patient}
         ).data
         
+        # Build lab reports data with files and enriched abnormal values
+        lab_reports_data = []
+        for r in reports:
+            # Get CriticalValueAlert records for enriched abnormal values
+            from prescriptions.models import CriticalValueAlert, LabReportFile
+            alerts = CriticalValueAlert.objects.filter(lab_report=r)
+            
+            # Build abnormal_values from CriticalValueAlerts (more detailed)
+            if alerts.exists():
+                abnormal_values = [{
+                    'test_name': a.test_name,
+                    'severity': a.severity,
+                    'result': a.measured_value,
+                    'expected': a.normal_range,
+                    'meaning': a.description,
+                    'unit': a.unit,
+                    'recommendation': a.recommendation,
+                } for a in alerts]
+                recommendations = list(set([a.recommendation for a in alerts if a.recommendation]))
+            elif r.abnormal_values:
+                # Fallback to report.abnormal_values
+                if r.abnormal_values and len(r.abnormal_values) > 0 and isinstance(r.abnormal_values[0], dict):
+                    abnormal_values = r.abnormal_values
+                else:
+                    # List of just test names - convert to dict format
+                    abnormal_values = [{
+                        'test_name': name,
+                        'severity': 'abnormal',
+                        'result': 'N/A',
+                        'expected': 'N/A',
+                        'meaning': '',
+                        'unit': '',
+                        'recommendation': '',
+                    } for name in r.abnormal_values if name]
+                recommendations = r.recommendations or []
+            else:
+                abnormal_values = []
+                recommendations = r.recommendations or []
+            
+            # Get all files for this report
+            report_files = LabReportFile.objects.filter(lab_report=r).order_by('created_at')
+            files_list = [{
+                'id': str(f.id),
+                'file_url': f.file_url,
+                'file_type': f.file_type,
+                'file_name': f.original_filename,
+                'original_filename': f.original_filename,
+                'file_size': f.file_size,
+                'created_at': f.created_at.isoformat() if f.created_at else None
+            } for f in report_files]
+            
+            # If no files in LabReportFile, use main file_url for backward compatibility
+            if not files_list and r.file_url:
+                files_list = [{
+                    'id': str(r.id),
+                    'file_url': r.file_url,
+                    'file_type': r.file_type or 'pdf',
+                    'file_name': f"{r.report_title}.pdf",
+                    'original_filename': f"{r.report_title}.pdf",
+                    'file_size': 0,
+                    'created_at': r.created_at.isoformat() if r.created_at else None
+                }]
+            
+            lab_reports_data.append({
+                'id': str(r.id),
+                'report_type': r.report_type,
+                'report_title': r.report_title,
+                'report_date': r.report_date,
+                'laboratory_name': r.laboratory_name,
+                'status': r.status,
+                'file_url': r.file_url,
+                'files': files_list,
+                'files_count': len(files_list),
+                'analysis_summary': r.analysis_summary,
+                'abnormal_values': abnormal_values,
+                'recommendations': recommendations,
+                'has_critical_values': r.has_critical_values,
+                'notes': r.notes,
+                'created_at': r.created_at
+            })
+        
         return Response({
             'patient': {
                 'id': str(patient.id),
@@ -584,15 +894,7 @@ class ViewPatientHistoryView(views.APIView):
             },
             'health_profile': health_profile,
             'prescriptions': prescriptions_data,
-            'lab_reports': [{
-                'id': str(r.id),
-                'report_type': r.report_type,
-                'report_title': r.report_title,
-                'report_date': r.report_date,
-                'laboratory_name': r.laboratory_name,
-                'status': r.status,
-                'created_at': r.created_at
-            } for r in reports],
+            'lab_reports': lab_reports_data,
             'session_expires_at': access_token.session_expires_at
         })
 

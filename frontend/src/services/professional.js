@@ -288,6 +288,12 @@ export const getPatientTestOrders = () => api.get('/test-orders/patient/orders/'
 export const getPatientTestOrderDetail = (orderId) => api.get(`/test-orders/patient/orders/${orderId}/`)
 export const createPatientTestOrder = (data) => api.post('/test-orders/patient/orders/create/', data)
 
+// Lab Send Quote
+export const sendTestOrderQuote = (orderId, data) => api.post(`/test-orders/lab/orders/${orderId}/quote/`, data)
+
+// Patient Quote Response
+export const respondToQuote = (orderId, data) => api.post(`/test-orders/patient/orders/${orderId}/quote-response/`, data)
+
 // Test Order Service Object
 export const testOrderService = {
   // Lab search
@@ -305,6 +311,7 @@ export const testOrderService = {
   accept: acceptTestOrder,
   decline: declineTestOrder,
   updateStatus: updateTestOrderStatus,
+  sendQuote: sendTestOrderQuote,  // Added for quotation workflow
   
   // Home collection
   getCollections: getLabHomeCollections,
@@ -327,4 +334,5 @@ export const testOrderService = {
   getPatientOrders: getPatientTestOrders,
   getPatientOrderDetail: getPatientTestOrderDetail,
   createPatientOrder: createPatientTestOrder,
+  respondToQuote: respondToQuote,  // Added for patient quote response
 }

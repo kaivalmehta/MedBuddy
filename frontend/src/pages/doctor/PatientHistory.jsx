@@ -9,7 +9,7 @@ import { doctorService } from '../../services/professional'
 import { 
   User, FileText, TestTube, Heart, AlertTriangle, Calendar, 
   ArrowLeft, Loader2, ChevronDown, ChevronUp, Pill, Clock,
-  CheckCircle, XCircle, TrendingUp, Activity
+  CheckCircle, XCircle, TrendingUp, Activity, Download, File, FileImage
 } from 'lucide-react'
 
 export default function PatientHistory() {
@@ -18,6 +18,7 @@ export default function PatientHistory() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedPrescriptions, setExpandedPrescriptions] = useState({})
+  const [selectedReport, setSelectedReport] = useState(null)
 
   useEffect(() => {
     loadPatientHistory()
@@ -360,15 +361,28 @@ export default function PatientHistory() {
         {data.lab_reports?.length > 0 ? (
           <div className="space-y-3">
             {data.lab_reports.map((r) => (
-              <div key={r.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+              <div 
+                key={r.id} 
+                onClick={() => setSelectedReport(r)}
+                className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-purple-50 cursor-pointer transition-colors"
+              >
                 <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
                   <TestTube className="w-5 h-5 text-purple-600" />
                 </div>
                 <div className="flex-1">
                   <p className="font-medium text-secondary-800">{r.report_title}</p>
-                  <p className="text-sm text-secondary-500">{r.report_type} • {r.laboratory_name || 'Unknown Lab'}</p>
+                  <p className="text-sm text-secondary-500">
+                    {r.report_type} • {r.laboratory_name || 'Unknown Lab'}
+                    {r.files_count > 0 && <span className="ml-2 text-purple-600">• {r.files_count} file(s)</span>}
+                  </p>
                 </div>
-                <p className="text-sm text-secondary-600">{new Date(r.created_at).toLocaleDateString()}</p>
+                <div className="flex items-center gap-2">
+                  {r.has_critical_values && (
+                    <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full">Critical</span>
+                  )}
+                  <p className="text-sm text-secondary-600">{new Date(r.created_at).toLocaleDateString()}</p>
+                  <ChevronDown className="w-4 h-4 text-secondary-400" />
+                </div>
               </div>
             ))}
           </div>
@@ -376,6 +390,223 @@ export default function PatientHistory() {
           <p className="text-secondary-500 text-center py-4">No lab reports found</p>
         )}
       </div>
+
+      {/* Lab Report Detail Modal */}
+      {selectedReport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b sticky top-0 bg-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <TestTube className="w-6 h-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-secondary-800">{selectedReport.report_title}</h3>
+                    <p className="text-sm text-secondary-500">{selectedReport.report_type} • {selectedReport.laboratory_name}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedReport(null)}
+                  className="p-2 hover:bg-gray-100 rounded-lg transition"
+                >
+                  <XCircle className="w-6 h-6 text-secondary-400" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Report Info */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-secondary-500">Report Date</p>
+                  <p className="font-medium">{selectedReport.report_date ? new Date(selectedReport.report_date).toLocaleDateString() : 'N/A'}</p>
+                </div>
+                <div className="p-3 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-secondary-500">Status</p>
+                  <p className="font-medium capitalize">{selectedReport.status || 'Received'}</p>
+                </div>
+              </div>
+
+              {/* Report Files Section */}
+              {(selectedReport.files?.length > 0 || selectedReport.file_url) && (
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <h4 className="font-medium text-secondary-800 mb-3 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-gray-500" />
+                    Report Files ({selectedReport.files?.length || 1})
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedReport.files?.length > 0 ? (
+                      selectedReport.files.map((file, idx) => {
+                        const getFileIcon = (fileType) => {
+                          if (fileType === 'pdf') return <File className="w-5 h-5 text-red-500" />
+                          if (['jpg', 'jpeg', 'png'].includes(fileType?.toLowerCase())) return <FileImage className="w-5 h-5 text-blue-500" />
+                          return <FileText className="w-5 h-5 text-gray-500" />
+                        }
+                        const formatFileSize = (bytes) => {
+                          if (!bytes) return 'Unknown size'
+                          if (bytes < 1024) return `${bytes} B`
+                          if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+                          return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+                        }
+                        return (
+                          <div key={file.id || idx} className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                            <div className="flex items-center gap-3">
+                              {getFileIcon(file.file_type)}
+                              <div>
+                                <p className="font-medium text-secondary-800 text-sm">{file.file_name}</p>
+                                <p className="text-xs text-secondary-500">
+                                  {file.file_type?.toUpperCase()} • {formatFileSize(file.file_size)}
+                                </p>
+                              </div>
+                            </div>
+                            <a
+                              href={file.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"
+                            >
+                              <Download className="w-4 h-4" />
+                              View
+                            </a>
+                          </div>
+                        )
+                      })
+                    ) : selectedReport.file_url ? (
+                      <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <File className="w-5 h-5 text-red-500" />
+                          <div>
+                            <p className="font-medium text-secondary-800 text-sm">Lab Report</p>
+                            <p className="text-xs text-secondary-500">PDF Document</p>
+                          </div>
+                        </div>
+                        <a
+                          href={selectedReport.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-medium"
+                        >
+                          <Download className="w-4 h-4" />
+                          View
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+
+              {/* Analysis Summary */}
+              {selectedReport.analysis_summary && (
+                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                  <h4 className="font-medium text-purple-800 mb-2 flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    Analysis Summary
+                  </h4>
+                  <p className="text-secondary-600 text-sm">{selectedReport.analysis_summary}</p>
+                </div>
+              )}
+
+              {/* Abnormal Values */}
+              {selectedReport.abnormal_values && selectedReport.abnormal_values.length > 0 && (
+                <div className={`p-4 rounded-xl border-2 ${selectedReport.has_critical_values ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <h4 className={`font-medium mb-3 flex items-center gap-2 ${selectedReport.has_critical_values ? 'text-red-800' : 'text-amber-800'}`}>
+                    <AlertTriangle className="w-4 h-4" />
+                    Abnormal Values Detected
+                    <span className="ml-auto text-sm px-2 py-1 rounded-full bg-white/50 font-medium">
+                      {selectedReport.abnormal_values.length} found
+                    </span>
+                  </h4>
+                  <div className="space-y-3">
+                    {selectedReport.abnormal_values.map((item, i) => {
+                      // Handle various field name patterns from different analysis versions
+                      const testName = item.test_name || item.parameter || item.name || item.test || 'Unknown Test'
+                      const resultValue = item.result || item.measured_value || item.value || 'N/A'
+                      const normalRange = item.expected || item.normal_range || item.reference_range || item.range || 'N/A'
+                      const severity = item.severity || item.status || 'abnormal'
+                      const meaning = item.meaning || item.description || item.explanation || ''
+                      const unit = item.unit || ''
+                      
+                      const getSeverityColor = (sev) => {
+                        const s = sev?.toLowerCase() || ''
+                        if (s.includes('critical') || s === 'panic') return 'bg-red-100 text-red-700'
+                        if (s === 'significant' || s === 'high') return 'bg-orange-100 text-orange-700'
+                        return 'bg-amber-100 text-amber-700'
+                      }
+                      
+                      const getSeverityLabel = (sev) => {
+                        const s = sev?.toLowerCase() || ''
+                        if (s === 'critical_low') return 'Critical Low'
+                        if (s === 'critical_high') return 'Critical High'
+                        if (s === 'panic') return 'PANIC'
+                        if (s === 'significant') return 'Significant'
+                        if (s === 'abnormal') return 'Abnormal'
+                        return sev.charAt(0).toUpperCase() + sev.slice(1)
+                      }
+                      
+                      return (
+                        <div key={i} className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-secondary-800 text-lg">{testName}</span>
+                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${getSeverityColor(severity)}`}>
+                              {getSeverityLabel(severity)}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-2">
+                            <div className="bg-gray-50 p-2 rounded">
+                              <span className="text-secondary-500 block text-xs uppercase tracking-wide">Result</span>
+                              <span className="font-semibold text-secondary-800 text-base">
+                                {resultValue} {unit}
+                              </span>
+                            </div>
+                            <div className="bg-gray-50 p-2 rounded">
+                              <span className="text-secondary-500 block text-xs uppercase tracking-wide">Normal Range</span>
+                              <span className="font-semibold text-secondary-800 text-base">
+                                {normalRange}
+                              </span>
+                            </div>
+                          </div>
+                          {meaning && (
+                            <p className="text-sm text-secondary-600 mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                              <span className="text-blue-500 font-medium">ℹ️</span> {meaning}
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
+                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                  <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    Recommendations
+                  </h4>
+                  <ul className="space-y-2">
+                    {selectedReport.recommendations.map((rec, i) => (
+                      <li key={i} className="text-sm text-secondary-700 flex items-start gap-3 bg-white p-3 rounded-lg">
+                        <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium flex-shrink-0">{i + 1}</span>
+                        <span>{rec}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Notes */}
+              {selectedReport.notes && (
+                <div className="p-4 bg-gray-50 rounded-xl">
+                  <h4 className="font-medium text-secondary-700 mb-2">Notes</h4>
+                  <p className="text-secondary-600 text-sm">{selectedReport.notes}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

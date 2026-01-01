@@ -11,6 +11,7 @@ urlpatterns = [
     path('profile/', views_professional.DoctorProfileView.as_view(), name='doctor_profile'),
     path('dashboard/', views_professional.DoctorDashboardView.as_view(), name='doctor_dashboard'),
     path('sent-prescriptions/', views_professional.DoctorSentPrescriptionsView.as_view(), name='doctor_sent_prescriptions'),
+    path('prescription/<uuid:prescription_id>/analyze/', views_professional.DoctorAnalyzePrescriptionView.as_view(), name='doctor_analyze_prescription'),
     
     # ============================================
     # PATIENT ACCESS (OTP VERIFICATION)

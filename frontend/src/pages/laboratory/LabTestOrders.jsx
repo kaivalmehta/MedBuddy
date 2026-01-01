@@ -66,12 +66,53 @@ export default function LabTestOrders() {
       
       await testOrderService.accept(orderId, data)
       setShowAcceptModal(null)
+      clearModalFields()
       loadOrders()
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to accept order')
     } finally {
       setActionLoading(null)
     }
+  }
+
+  const handleSendQuote = async (orderId) => {
+    console.log('handleSendQuote called with orderId:', orderId)
+    console.log('estimatedCost value:', estimatedCost, 'type:', typeof estimatedCost)
+    
+    if (!estimatedCost) {
+      console.log('No estimated cost - setting error')
+      setError('Please enter an estimated cost')
+      return
+    }
+    setActionLoading(orderId)
+    try {
+      const data = {
+        estimated_cost: estimatedCost,
+        quote_notes: labNotes,
+        lab_notes: labNotes,
+      }
+      console.log('Sending quote with data:', data)
+      const response = await testOrderService.sendQuote(orderId, data)
+      console.log('Quote sent successfully:', response)
+      setShowAcceptModal(null)
+      clearModalFields()
+      loadOrders()
+    } catch (err) {
+      console.error('Send quote error:', err)
+      setError(err.response?.data?.error || 'Failed to send quote')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const clearModalFields = () => {
+    setEstimatedCost('')
+    setLabNotes('')
+    setCollectorName('')
+    setCollectorPhone('')
+    setConfirmedDate('')
+    setConfirmedTime('')
+    setDeclineReason('')
   }
 
   const handleDecline = async (orderId) => {
@@ -101,6 +142,9 @@ export default function LabTestOrders() {
 
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-700',
+    quote_sent: 'bg-blue-100 text-blue-700',
+    quote_accepted: 'bg-green-100 text-green-700',
+    quote_rejected: 'bg-orange-100 text-orange-700',
     accepted: 'bg-blue-100 text-blue-700',
     declined: 'bg-red-100 text-red-700',
     sample_collected: 'bg-purple-100 text-purple-700',
@@ -136,6 +180,9 @@ export default function LabTestOrders() {
           >
             <option value="">All Status</option>
             <option value="pending">Pending</option>
+            <option value="quote_sent">Quote Sent</option>
+            <option value="quote_accepted">Quote Accepted</option>
+            <option value="quote_rejected">Quote Rejected</option>
             <option value="accepted">Accepted</option>
             <option value="sample_collected">Sample Collected</option>
             <option value="processing">Processing</option>
@@ -333,10 +380,10 @@ export default function LabTestOrders() {
                           <button
                             onClick={() => setShowAcceptModal(order)}
                             disabled={actionLoading === order.id}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
                           >
-                            <CheckCircle className="w-4 h-4" />
-                            Accept Order
+                            <FileText className="w-4 h-4" />
+                            Send Quote
                           </button>
                           <button
                             onClick={() => setShowDeclineModal(order)}
@@ -347,6 +394,38 @@ export default function LabTestOrders() {
                             Decline
                           </button>
                         </>
+                      )}
+                      {order.status === 'quote_sent' && (
+                        <div className="text-sm text-blue-600 bg-blue-50 px-4 py-2 rounded-lg">
+                          <Clock className="w-4 h-4 inline mr-2" />
+                          Waiting for patient to accept quote (${order.estimated_cost})
+                        </div>
+                      )}
+                      {order.status === 'quote_accepted' && (
+                        <>
+                          <button
+                            onClick={() => setShowAcceptModal({ ...order, isQuoteAccepted: true })}
+                            disabled={actionLoading === order.id}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Accept & Proceed
+                          </button>
+                          <button
+                            onClick={() => setShowDeclineModal(order)}
+                            disabled={actionLoading === order.id}
+                            className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition flex items-center gap-2"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            Decline
+                          </button>
+                        </>
+                      )}
+                      {order.status === 'quote_rejected' && (
+                        <div className="text-sm text-orange-600 bg-orange-50 px-4 py-2 rounded-lg">
+                          <AlertTriangle className="w-4 h-4 inline mr-2" />
+                          Patient rejected quote{order.patient_rejection_reason ? `: ${order.patient_rejection_reason}` : ''}
+                        </div>
                       )}
                       {order.status === 'accepted' && (
                         <button
@@ -392,7 +471,7 @@ export default function LabTestOrders() {
         </div>
       )}
 
-      {/* Accept Modal */}
+      {/* Accept/Quote Modal */}
       <AnimatePresence>
         {showAcceptModal && (
           <motion.div
@@ -400,7 +479,7 @@ export default function LabTestOrders() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowAcceptModal(null)}
+            onClick={() => { setShowAcceptModal(null); clearModalFields(); }}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -409,32 +488,55 @@ export default function LabTestOrders() {
               className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-xl font-bold text-gray-800 mb-4">Accept Order #{showAcceptModal.order_number}</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-4">
+                {showAcceptModal.isQuoteAccepted ? `Accept Order #${showAcceptModal.order_number}` : `Send Quote for Order #${showAcceptModal.order_number}`}
+              </h3>
+              
+              {!showAcceptModal.isQuoteAccepted && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    Send a quote to the patient. They will need to accept it before you can proceed with the order.
+                  </p>
+                </div>
+              )}
+
+              {showAcceptModal.isQuoteAccepted && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-green-700">
+                    Patient has accepted your quote of <strong>${showAcceptModal.estimated_cost}</strong>. You can now proceed with accepting the order.
+                  </p>
+                </div>
+              )}
               
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Cost</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {showAcceptModal.isQuoteAccepted ? 'Final Cost' : 'Estimated Cost'} *
+                  </label>
                   <input
                     type="number"
-                    value={estimatedCost}
+                    value={estimatedCost || (showAcceptModal.isQuoteAccepted ? showAcceptModal.estimated_cost : '')}
                     onChange={(e) => setEstimatedCost(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
-                    placeholder="₹0.00"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="$0.00"
+                    required
                   />
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Lab Notes</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {showAcceptModal.isQuoteAccepted ? 'Lab Notes' : 'Quote Notes'}
+                  </label>
                   <textarea
                     value={labNotes}
                     onChange={(e) => setLabNotes(e.target.value)}
                     rows={2}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 resize-none"
-                    placeholder="Any notes for this order..."
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                    placeholder={showAcceptModal.isQuoteAccepted ? 'Any notes for this order...' : 'Explain what the cost includes...'}
                   />
                 </div>
 
-                {showAcceptModal.collection_type === 'home_collection' && (
+                {showAcceptModal.isQuoteAccepted && showAcceptModal.collection_type === 'home_collection' && (
                   <>
                     <div className="p-3 bg-green-50 rounded-lg">
                       <p className="text-sm font-medium text-green-800 mb-2">Home Collection Assignment</p>
@@ -487,22 +589,26 @@ export default function LabTestOrders() {
 
               <div className="flex gap-3 mt-6">
                 <button
-                  onClick={() => setShowAcceptModal(null)}
+                  onClick={() => { setShowAcceptModal(null); clearModalFields(); }}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => handleAccept(showAcceptModal.id)}
-                  disabled={actionLoading === showAcceptModal.id}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center gap-2"
+                  onClick={() => showAcceptModal.isQuoteAccepted ? handleAccept(showAcceptModal.id) : handleSendQuote(showAcceptModal.id)}
+                  disabled={actionLoading === showAcceptModal.id || (!showAcceptModal.isQuoteAccepted && !estimatedCost)}
+                  className={`flex-1 px-4 py-2 text-white rounded-lg transition flex items-center justify-center gap-2 ${
+                    showAcceptModal.isQuoteAccepted ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                  } disabled:opacity-50`}
                 >
                   {actionLoading === showAcceptModal.id ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
+                  ) : showAcceptModal.isQuoteAccepted ? (
                     <CheckCircle className="w-4 h-4" />
+                  ) : (
+                    <FileText className="w-4 h-4" />
                   )}
-                  Accept
+                  {showAcceptModal.isQuoteAccepted ? 'Accept Order' : 'Send Quote'}
                 </button>
               </div>
             </motion.div>

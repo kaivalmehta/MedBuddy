@@ -440,6 +440,7 @@ class TestOrderSerializer(serializers.ModelSerializer):
             'collection_type', 'collection_type_display',
             'home_collection', 'lab_notes',
             'accepted_at', 'declined_at', 'decline_reason',
+            'quote_sent_at', 'quote_notes', 'patient_response_at', 'patient_rejection_reason',
             'completed_at', 'estimated_cost', 'final_cost',
             'has_report', 'created_at', 'updated_at'
         ]

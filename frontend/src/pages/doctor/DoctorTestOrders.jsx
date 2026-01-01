@@ -4,7 +4,7 @@ import { testOrderService } from '../../services/professional'
 import { 
   FileText, Clock, CheckCircle, XCircle, Home, Building,
   User, Loader2, Filter, Plus, AlertTriangle, ChevronDown,
-  ChevronUp, FlaskConical, Calendar, Eye
+  ChevronUp, FlaskConical, Calendar, Eye, X, Activity, Info, Download
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -14,6 +14,9 @@ export default function DoctorTestOrders() {
   const [error, setError] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [expandedOrder, setExpandedOrder] = useState(null)
+  const [orderDetails, setOrderDetails] = useState({}) // Cache order details
+  const [loadingDetail, setLoadingDetail] = useState(null)
+  const [selectedReport, setSelectedReport] = useState(null) // For report modal
 
   useEffect(() => {
     loadOrders()
@@ -32,6 +35,29 @@ export default function DoctorTestOrders() {
     }
   }
 
+  const loadOrderDetail = async (orderId) => {
+    if (orderDetails[orderId]) return // Already cached
+    
+    setLoadingDetail(orderId)
+    try {
+      const res = await testOrderService.getDoctorOrderDetail(orderId)
+      setOrderDetails(prev => ({ ...prev, [orderId]: res.data }))
+    } catch (err) {
+      console.error('Failed to load order details:', err)
+    } finally {
+      setLoadingDetail(null)
+    }
+  }
+
+  const handleExpandOrder = async (orderId) => {
+    if (expandedOrder === orderId) {
+      setExpandedOrder(null)
+    } else {
+      setExpandedOrder(orderId)
+      await loadOrderDetail(orderId)
+    }
+  }
+
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-700',
     accepted: 'bg-blue-100 text-blue-700',
@@ -46,6 +72,12 @@ export default function DoctorTestOrders() {
     routine: 'bg-gray-100 text-gray-600',
     urgent: 'bg-orange-100 text-orange-700',
     stat: 'bg-red-100 text-red-700',
+  }
+
+  const getSeverityColor = (severity) => {
+    if (severity?.includes('critical')) return 'bg-red-100 text-red-700'
+    if (severity?.includes('significant')) return 'bg-orange-100 text-orange-700'
+    return 'bg-amber-100 text-amber-700'
   }
 
   return (
@@ -121,7 +153,7 @@ export default function DoctorTestOrders() {
               {/* Order Header */}
               <div
                 className="flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                onClick={() => handleExpandOrder(order.id)}
               >
                 <div className="flex items-center gap-4">
                   <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
@@ -229,20 +261,102 @@ export default function DoctorTestOrders() {
                       </div>
                     )}
 
-                    {/* Reports */}
+                    {/* Reports - Show multiple reports separately */}
                     {order.has_report && (
                       <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                         <p className="text-xs font-medium text-blue-700 mb-2 flex items-center gap-1">
                           <FileText className="w-3 h-3" />
-                          Report Available
+                          Reports Available
                         </p>
-                        <Link
-                          to="/doctor/test-orders"
-                          className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                        >
-                          <Eye className="w-4 h-4" />
-                          View Report
-                        </Link>
+                        
+                        {loadingDetail === order.id ? (
+                          <div className="flex items-center gap-2 text-sm text-blue-600">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Loading reports...
+                          </div>
+                        ) : orderDetails[order.id]?.reports?.length > 0 ? (
+                          <div className="space-y-3">
+                            {orderDetails[order.id].reports.map((report, idx) => (
+                              <div key={report.id} className="bg-white rounded-lg border border-blue-100 overflow-hidden">
+                                {/* Report Header - Click to view analysis */}
+                                <div 
+                                  className="flex items-center justify-between p-2 hover:bg-gray-50 transition cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    setSelectedReport(report)
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                                      <FlaskConical className="w-4 h-4 text-purple-600" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-medium text-gray-800">{report.report_title}</p>
+                                      <p className="text-xs text-gray-500">{report.report_type} • {report.files_count || 1} file(s)</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {report.has_critical_values && (
+                                      <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full">Critical</span>
+                                    )}
+                                    <button className="flex items-center gap-1 px-3 py-1 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 transition">
+                                      <Eye className="w-3 h-3" />
+                                      View Analysis
+                                    </button>
+                                  </div>
+                                </div>
+                                
+                                {/* Report Files List */}
+                                {report.files && report.files.length > 0 && (
+                                  <div className="border-t border-blue-100 p-2 bg-gray-50">
+                                    <p className="text-xs text-gray-500 mb-2">Report Files ({report.files.length})</p>
+                                    <div className="space-y-1">
+                                      {report.files.map((file, fileIdx) => (
+                                        <div key={file.id || fileIdx} className="flex items-center justify-between p-2 bg-white rounded border border-gray-100">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-7 h-7 bg-red-50 rounded flex items-center justify-center">
+                                              <FileText className="w-3.5 h-3.5 text-red-500" />
+                                            </div>
+                                            <div>
+                                              <p className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
+                                                {file.original_filename || `File ${fileIdx + 1}`}
+                                              </p>
+                                              <p className="text-xs text-gray-400">
+                                                {file.file_type?.toUpperCase() || 'PDF'} 
+                                                {file.file_size ? ` • ${(file.file_size / 1024).toFixed(1)} KB` : ''}
+                                              </p>
+                                            </div>
+                                          </div>
+                                          <a
+                                            href={file.file_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="flex items-center gap-1 px-2 py-1 text-purple-600 hover:bg-purple-50 text-xs rounded transition"
+                                          >
+                                            <Download className="w-3 h-3" />
+                                            View
+                                          </a>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              loadOrderDetail(order.id)
+                            }}
+                            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                          >
+                            <Eye className="w-4 h-4" />
+                            Load Reports
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -270,6 +384,186 @@ export default function DoctorTestOrders() {
           ))}
         </div>
       )}
+
+      {/* Report Detail Modal */}
+      <AnimatePresence>
+        {selectedReport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedReport(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b sticky top-0 bg-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                      <FlaskConical className="w-6 h-6 text-purple-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-800">{selectedReport.report_title}</h3>
+                      <p className="text-sm text-gray-500">{selectedReport.report_type}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedReport(null)}
+                    className="p-2 hover:bg-gray-100 rounded-lg transition"
+                  >
+                    <X className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-4">
+                {/* Report Date */}
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Calendar className="w-4 h-4" />
+                  {new Date(selectedReport.created_at).toLocaleDateString()}
+                </div>
+
+                {/* Critical Alert */}
+                {selectedReport.has_critical_values && (
+                  <div className="p-3 bg-red-50 rounded-lg border border-red-200 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    <span className="text-sm font-medium text-red-700">This report contains critical values</span>
+                  </div>
+                )}
+
+                {/* Analysis Summary */}
+                {selectedReport.analysis_summary && (
+                  <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
+                    <h4 className="font-medium text-purple-800 mb-2 flex items-center gap-2">
+                      <Activity className="w-4 h-4" />
+                      Analysis Summary
+                    </h4>
+                    <p className="text-gray-600 text-sm">{selectedReport.analysis_summary}</p>
+                  </div>
+                )}
+
+                {/* Abnormal Values */}
+                {selectedReport.abnormal_values && selectedReport.abnormal_values.length > 0 && (
+                  <div className={`p-4 rounded-xl border-2 ${selectedReport.has_critical_values ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
+                    <h4 className={`font-medium mb-3 flex items-center gap-2 ${selectedReport.has_critical_values ? 'text-red-800' : 'text-amber-800'}`}>
+                      <AlertTriangle className="w-4 h-4" />
+                      Abnormal Values ({selectedReport.abnormal_values.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {selectedReport.abnormal_values.map((item, i) => {
+                        // Handle various field name patterns from different analysis versions
+                        const testName = item.test_name || item.parameter || item.name || item.test || 'Unknown Test'
+                        const resultValue = item.result || item.measured_value || item.value || 'N/A'
+                        const normalRange = item.expected || item.normal_range || item.reference_range || item.range || 'N/A'
+                        const severity = item.severity || item.status || 'abnormal'
+                        const meaning = item.meaning || item.description || item.explanation || ''
+                        const unit = item.unit || ''
+                        
+                        return (
+                          <div key={i} className="p-3 bg-white rounded-lg border border-gray-100">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-medium text-gray-800">{testName}</span>
+                              <span className={`text-xs font-bold px-2 py-1 rounded-full ${getSeverityColor(severity)}`}>
+                                {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 text-sm">
+                              <div>
+                                <span className="text-gray-500">Result: </span>
+                                <span className="font-medium">{resultValue} {unit}</span>
+                              </div>
+                              <div>
+                                <span className="text-gray-500">Normal: </span>
+                                <span className="font-medium">{normalRange}</span>
+                              </div>
+                            </div>
+                            {meaning && (
+                              <p className="text-xs text-gray-600 mt-2 p-2 bg-blue-50 rounded flex items-start gap-1">
+                                <Info className="w-3 h-3 mt-0.5 flex-shrink-0 text-blue-500" />
+                                {meaning}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recommendations */}
+                {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                    <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      Recommendations
+                    </h4>
+                    <ul className="space-y-1">
+                      {selectedReport.recommendations.map((rec, i) => (
+                        <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
+                          <span className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs flex-shrink-0">{i + 1}</span>
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* All Report Files */}
+                {selectedReport.files && selectedReport.files.length > 0 ? (
+                  <div className="space-y-2">
+                    <h4 className="font-medium text-gray-700 flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      Report Files ({selectedReport.files.length})
+                    </h4>
+                    {selectedReport.files.map((file, i) => (
+                      <a
+                        key={file.id || i}
+                        href={file.file_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-200 hover:bg-gray-100 transition"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                            <FileText className="w-5 h-5 text-red-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-800">{file.original_filename || `File ${i + 1}`}</p>
+                            <p className="text-xs text-gray-500">
+                              {file.file_type?.toUpperCase() || 'PDF'}
+                              {file.file_size ? ` • ${(file.file_size / 1024).toFixed(1)} KB` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 text-purple-600">
+                          <Download className="w-4 h-4" />
+                          <span className="text-sm">View</span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                ) : selectedReport.file_url && (
+                  <a
+                    href={selectedReport.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition"
+                  >
+                    <FileText className="w-5 h-5" />
+                    View Full Report PDF
+                  </a>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -529,6 +529,9 @@ class TestOrder(models.Model):
     
     STATUS_CHOICES = [
         ('pending', 'Pending Lab Acceptance'),
+        ('quote_sent', 'Quote Sent - Awaiting Patient Confirmation'),
+        ('quote_accepted', 'Quote Accepted by Patient'),
+        ('quote_rejected', 'Quote Rejected by Patient'),
         ('accepted', 'Accepted by Lab'),
         ('declined', 'Declined by Lab'),
         ('sample_collected', 'Sample Collected'),
@@ -572,6 +575,12 @@ class TestOrder(models.Model):
     accepted_at = models.DateTimeField(null=True, blank=True)
     declined_at = models.DateTimeField(null=True, blank=True)
     decline_reason = models.TextField(blank=True)
+    
+    # Quote workflow
+    quote_sent_at = models.DateTimeField(null=True, blank=True)
+    quote_notes = models.TextField(blank=True, help_text="Additional notes from lab about the quote")
+    patient_response_at = models.DateTimeField(null=True, blank=True)
+    patient_rejection_reason = models.TextField(blank=True)
     
     # Completion
     completed_at = models.DateTimeField(null=True, blank=True)

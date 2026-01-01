@@ -223,22 +223,32 @@ export default function PatientAccess() {
             <h2 className="font-semibold text-secondary-800">Active Sessions</h2>
           </div>
           <div className="space-y-2">
-            {activeSessions.map((session) => (
-              <button
-                key={session.id}
-                onClick={() => goToSession(session)}
-                className="w-full flex items-center justify-between p-3 bg-green-50 hover:bg-green-100 rounded-xl transition"
-              >
-                <div className="text-left">
-                  <p className="font-medium text-secondary-800">{session.patient_name || session.patient_email}</p>
-                  <p className="text-xs text-secondary-500 flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
-                    Expires in {Math.round((new Date(session.expires_at) - new Date()) / 60000)} min
-                  </p>
-                </div>
-                <ArrowRight className="w-5 h-5 text-green-600" />
-              </button>
-            ))}
+            {activeSessions.map((session) => {
+              const expiresAt = new Date(session.expires_at)
+              const now = new Date()
+              const minutesLeft = Math.round((expiresAt - now) / 60000)
+              const isExpired = minutesLeft <= 0
+              
+              // Don't show expired sessions
+              if (isExpired) return null
+              
+              return (
+                <button
+                  key={session.id}
+                  onClick={() => goToSession(session)}
+                  className="w-full flex items-center justify-between p-3 bg-green-50 hover:bg-green-100 rounded-xl transition"
+                >
+                  <div className="text-left">
+                    <p className="font-medium text-secondary-800">{session.patient_name || session.patient_email}</p>
+                    <p className="text-xs text-secondary-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Expires in {minutesLeft} min
+                    </p>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-green-600" />
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

@@ -72,6 +72,22 @@ export default function LabDashboard() {
 
   return (
     <div className="space-y-8">
+      {/* Suspension Warning */}
+      {user?.is_suspended && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-red-800">Account Suspended</p>
+            <p className="text-sm text-red-700 mt-1">
+              Your account has been suspended. {user.suspension_reason ? `Reason: ${user.suspension_reason}` : 'Please contact support for more information.'}
+            </p>
+            <p className="text-sm text-red-600 mt-2">
+              Your access to patient data and report upload features is restricted until the suspension is lifted.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Welcome Header */}
       <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-2xl p-8 text-white">
         <div className="flex items-center justify-between">
@@ -174,27 +190,49 @@ export default function LabDashboard() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-lg font-semibold text-secondary-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {quickActions.map((action, idx) => (
-            <motion.div
-              key={action.path}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-            >
-              <Link 
-                to={action.path} 
-                className="card-hover p-6 flex flex-col items-center text-center group"
+        {user?.is_suspended ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {quickActions.map((action, idx) => (
+              <motion.div
+                key={action.path}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
               >
-                <div className={`w-14 h-14 ${action.color} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <action.icon className="w-7 h-7 text-white" />
+                <div className="card p-6 flex flex-col items-center text-center opacity-50 cursor-not-allowed">
+                  <div className={`w-14 h-14 bg-gray-400 rounded-2xl flex items-center justify-center mb-4`}>
+                    <action.icon className="w-7 h-7 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-secondary-800">{action.title}</h3>
+                  <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
+                  <span className="text-xs text-red-500 mt-2">Suspended</span>
                 </div>
-                <h3 className="font-semibold text-secondary-800">{action.title}</h3>
-                <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
+              </motion.div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {quickActions.map((action, idx) => (
+              <motion.div
+                key={action.path}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.1 }}
+              >
+                <Link 
+                  to={action.path} 
+                  className="card-hover p-6 flex flex-col items-center text-center group"
+                >
+                  <div className={`w-14 h-14 ${action.color} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                    <action.icon className="w-7 h-7 text-white" />
+                  </div>
+                  <h3 className="font-semibold text-secondary-800">{action.title}</h3>
+                  <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
+                </Link>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

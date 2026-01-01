@@ -945,7 +945,7 @@ function PharmacyModal({ onClose }) {
         <p className="text-secondary-500 mb-6">Find a nearby pharmacy to send your prescription.</p>
         <div className="flex justify-end gap-3">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <Link to="/pharmacies" className="btn-primary flex items-center gap-2"><MapPin className="w-4 h-4" /> Find Pharmacies</Link>
+          <Link to="/find-nearby" className="btn-primary flex items-center gap-2"><MapPin className="w-4 h-4" /> Find Pharmacies</Link>
         </div>
       </motion.div>
     </div>

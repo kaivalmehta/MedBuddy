@@ -13,6 +13,9 @@ export default function PatientTestOrders() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedOrder, setExpandedOrder] = useState(null)
+  const [respondingToQuote, setRespondingToQuote] = useState(null)
+  const [rejectionReason, setRejectionReason] = useState('')
+  const [showRejectModal, setShowRejectModal] = useState(null)
 
   useEffect(() => {
     loadOrders()
@@ -29,12 +32,48 @@ export default function PatientTestOrders() {
     }
   }
 
+  const handleQuoteResponse = async (orderId, action) => {
+    setRespondingToQuote(orderId)
+    try {
+      const payload = { action }
+      if (action === 'reject' && rejectionReason) {
+        payload.rejection_reason = rejectionReason
+      }
+      await testOrderService.respondToQuote(orderId, payload)
+      setShowRejectModal(null)
+      setRejectionReason('')
+      await loadOrders()
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to respond to quote')
+    } finally {
+      setRespondingToQuote(null)
+    }
+  }
+
   const statusConfig = {
     pending: {
       color: 'bg-yellow-100 text-yellow-700',
       icon: Clock,
       label: 'Pending Lab Acceptance',
       description: 'Waiting for the laboratory to accept this order'
+    },
+    quote_sent: {
+      color: 'bg-blue-100 text-blue-700',
+      icon: FileText,
+      label: 'Quote Received',
+      description: 'Laboratory has sent a quote. Please review and confirm.'
+    },
+    quote_accepted: {
+      color: 'bg-green-100 text-green-700',
+      icon: CheckCircle,
+      label: 'Quote Accepted',
+      description: 'You accepted the quote. Waiting for lab to proceed.'
+    },
+    quote_rejected: {
+      color: 'bg-orange-100 text-orange-700',
+      icon: XCircle,
+      label: 'Quote Rejected',
+      description: 'You rejected the quote. Consider selecting another lab.'
     },
     accepted: {
       color: 'bg-blue-100 text-blue-700',
@@ -229,10 +268,94 @@ export default function PatientTestOrders() {
                       {/* Status Message */}
                       <div className={`p-3 rounded-lg mb-4 ${
                         order.status === 'completed' ? 'bg-green-50' :
-                        order.status === 'declined' ? 'bg-red-50' : 'bg-blue-50'
+                        order.status === 'declined' ? 'bg-red-50' : 
+                        order.status === 'quote_sent' ? 'bg-amber-50' : 'bg-blue-50'
                       }`}>
                         <p className="text-sm text-gray-700">{config.description}</p>
                       </div>
+
+                      {/* Quote Response Section */}
+                      {order.status === 'quote_sent' && (
+                        <div className="mb-4 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200">
+                          <div className="flex items-center gap-2 mb-3">
+                            <FileText className="w-5 h-5 text-amber-600" />
+                            <h4 className="font-semibold text-amber-800">Quote from Laboratory</h4>
+                          </div>
+                          
+                          <div className="bg-white rounded-lg p-4 mb-4">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="text-gray-600">Estimated Cost:</span>
+                              <span className="text-2xl font-bold text-green-600">${order.estimated_cost}</span>
+                            </div>
+                            {order.quote_notes && (
+                              <div className="text-sm text-gray-600 pt-3 border-t">
+                                <p className="font-medium text-gray-700 mb-1">Lab Notes:</p>
+                                <p>{order.quote_notes}</p>
+                              </div>
+                            )}
+                          </div>
+                          
+                          <p className="text-sm text-amber-700 mb-4">
+                            Please review the quote and confirm to proceed with the lab tests.
+                          </p>
+                          
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => handleQuoteResponse(order.id, 'accept')}
+                              disabled={respondingToQuote === order.id}
+                              className="flex-1 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                              {respondingToQuote === order.id ? (
+                                <Loader2 className="w-5 h-5 animate-spin" />
+                              ) : (
+                                <CheckCircle className="w-5 h-5" />
+                              )}
+                              Accept Quote
+                            </button>
+                            <button
+                              onClick={() => setShowRejectModal(order.id)}
+                              disabled={respondingToQuote === order.id}
+                              className="flex-1 py-3 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                              <XCircle className="w-5 h-5" />
+                              Reject Quote
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Quote Accepted Info */}
+                      {order.status === 'quote_accepted' && (
+                        <div className="mb-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <CheckCircle className="w-5 h-5 text-green-600" />
+                            <h4 className="font-medium text-green-800">Quote Accepted</h4>
+                          </div>
+                          <p className="text-sm text-gray-700">
+                            You accepted the quote of <strong>${order.estimated_cost}</strong>. 
+                            The laboratory will proceed with accepting your order.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Quote Rejected Info */}
+                      {order.status === 'quote_rejected' && (
+                        <div className="mb-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                          <div className="flex items-center gap-2 mb-2">
+                            <XCircle className="w-5 h-5 text-orange-600" />
+                            <h4 className="font-medium text-orange-800">Quote Rejected</h4>
+                          </div>
+                          <p className="text-sm text-gray-700">
+                            You rejected the quote of ${order.estimated_cost}. 
+                            Your doctor has been notified and may select another laboratory.
+                          </p>
+                          {order.patient_rejection_reason && (
+                            <p className="text-sm text-gray-600 mt-2">
+                              <strong>Your reason:</strong> {order.patient_rejection_reason}
+                            </p>
+                          )}
+                        </div>
+                      )}
 
                       {/* Tests */}
                       <div className="mb-4">
@@ -346,6 +469,49 @@ export default function PatientTestOrders() {
               </motion.div>
             )
           })}
+        </div>
+      )}
+
+      {/* Reject Quote Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl max-w-md w-full p-6"
+          >
+            <h3 className="text-lg font-semibold text-gray-800 mb-4">Reject Quote</h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to reject this quote? Your doctor will be notified.
+            </p>
+            <textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Reason for rejection (optional)"
+              className="w-full p-3 border border-gray-200 rounded-lg resize-none h-24 focus:ring-2 focus:ring-red-200 focus:border-red-400 outline-none mb-4"
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowRejectModal(null)
+                  setRejectionReason('')
+                }}
+                className="flex-1 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleQuoteResponse(showRejectModal, 'reject')}
+                disabled={respondingToQuote}
+                className="flex-1 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {respondingToQuote ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : null}
+                Reject Quote
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
     </div>

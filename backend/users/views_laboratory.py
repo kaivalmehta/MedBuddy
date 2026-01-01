@@ -376,7 +376,7 @@ class DoctorTestOrderDetailView(views.APIView):
         try:
             order = TestOrder.objects.select_related(
                 'patient', 'laboratory'
-            ).prefetch_related('home_collection', 'reports').get(
+            ).prefetch_related('home_collection', 'reports', 'reports__files').get(
                 id=order_id,
                 doctor=request.user
             )
@@ -385,18 +385,104 @@ class DoctorTestOrderDetailView(views.APIView):
         
         data = TestOrderSerializer(order).data
         
-        # Include reports if completed
+        # Include reports if completed - with full details including CriticalValueAlerts and files
         if order.status == 'completed':
-            from prescriptions.models import LabReport
+            from prescriptions.models import LabReport, CriticalValueAlert, LabReportFile
             reports = order.reports.all()
-            data['reports'] = [{
-                'id': str(r.id),
-                'report_title': r.report_title,
-                'report_type': r.report_type,
-                'file_url': r.file_url,
-                'has_critical_values': r.has_critical_values,
-                'created_at': r.created_at.isoformat()
-            } for r in reports]
+            reports_data = []
+            
+            for r in reports:
+                # Get CriticalValueAlert records for this report
+                alerts = CriticalValueAlert.objects.filter(lab_report=r)
+                
+                # Build abnormal_values from CriticalValueAlerts (more detailed)
+                if alerts.exists():
+                    abnormal_values = [{
+                        'test_name': a.test_name,
+                        'severity': a.severity,
+                        'result': a.measured_value,
+                        'expected': a.normal_range,
+                        'meaning': a.description,
+                        'unit': a.unit,
+                        'recommendation': a.recommendation,
+                    } for a in alerts]
+                    recommendations = list(set([a.recommendation for a in alerts if a.recommendation]))
+                elif r.abnormal_values:
+                    # Fallback to report.abnormal_values
+                    if r.abnormal_values and len(r.abnormal_values) > 0 and isinstance(r.abnormal_values[0], dict):
+                        abnormal_values = [{
+                            'test_name': av.get('test_name', 'Unknown'),
+                            'severity': av.get('severity', 'abnormal'),
+                            'result': av.get('result', av.get('measured_value', 'N/A')),
+                            'expected': av.get('expected', av.get('normal_range', 'N/A')),
+                            'meaning': av.get('meaning', av.get('description', '')),
+                            'unit': av.get('unit', ''),
+                            'recommendation': av.get('recommendation', ''),
+                        } for av in r.abnormal_values]
+                    else:
+                        # List of just test names
+                        abnormal_values = [{
+                            'test_name': name,
+                            'severity': 'abnormal',
+                            'result': 'N/A',
+                            'expected': 'N/A',
+                            'meaning': '',
+                            'unit': '',
+                            'recommendation': '',
+                        } for name in r.abnormal_values if name]
+                    recommendations = r.recommendations or []
+                else:
+                    abnormal_values = []
+                    recommendations = r.recommendations or []
+                
+                # Build analysis summary if not present
+                analysis_summary = r.analysis_summary
+                if not analysis_summary and abnormal_values:
+                    if r.has_critical_values:
+                        analysis_summary = f"This report contains {len(abnormal_values)} abnormal value(s) that require attention."
+                    else:
+                        analysis_summary = f"This report has been analyzed. {len(abnormal_values)} value(s) were flagged for your review."
+                elif not analysis_summary:
+                    analysis_summary = "Report analysis is pending or no abnormal values were detected."
+                
+                # Get all files for this report
+                report_files = LabReportFile.objects.filter(lab_report=r).order_by('created_at')
+                files_list = [{
+                    'id': str(f.id),
+                    'file_url': f.file_url,
+                    'file_type': f.file_type,
+                    'original_filename': f.original_filename,
+                    'file_size': f.file_size,
+                    'created_at': f.created_at.isoformat()
+                } for f in report_files]
+                
+                # If no files in LabReportFile, use the main file_url for backward compatibility
+                if not files_list and r.file_url:
+                    files_list = [{
+                        'id': str(r.id),
+                        'file_url': r.file_url,
+                        'file_type': r.file_type,
+                        'original_filename': f"{r.report_title}.{r.file_type}",
+                        'file_size': 0,
+                        'created_at': r.created_at.isoformat()
+                    }]
+                
+                reports_data.append({
+                    'id': str(r.id),
+                    'report_title': r.report_title,
+                    'report_type': r.report_type,
+                    'file_url': r.file_url,
+                    'files': files_list,  # Include all files
+                    'files_count': len(files_list),
+                    'has_critical_values': r.has_critical_values,
+                    'analysis_summary': analysis_summary,
+                    'abnormal_values': abnormal_values,
+                    'recommendations': recommendations,
+                    'notes': r.notes,
+                    'created_at': r.created_at.isoformat()
+                })
+            
+            data['reports'] = reports_data
         
         return Response(data)
 
@@ -459,20 +545,29 @@ class LabTestOrderDetailView(views.APIView):
         """Accept or decline order"""
         action = request.data.get('action')  # 'accept' or 'decline'
         
+        # Allow accept for pending or quote_accepted orders
+        # Allow decline only for pending orders
+        if action == 'accept':
+            valid_statuses = ['pending', 'quote_accepted']
+        else:
+            valid_statuses = ['pending']
+        
         try:
             order = TestOrder.objects.get(
                 id=order_id,
                 laboratory=request.user,
-                status='pending'
+                status__in=valid_statuses
             )
         except TestOrder.DoesNotExist:
-            return Response({'error': 'Order not found or not pending'}, status=404)
+            return Response({'error': 'Order not found or cannot perform this action'}, status=404)
         
         if action == 'accept':
             order.status = 'accepted'
             order.accepted_at = timezone.now()
-            order.estimated_cost = request.data.get('estimated_cost')
-            order.lab_notes = request.data.get('lab_notes', '')
+            # Keep existing estimated_cost if quote was accepted, otherwise use new value
+            if not order.estimated_cost:
+                order.estimated_cost = request.data.get('estimated_cost')
+            order.lab_notes = request.data.get('lab_notes', '') or order.lab_notes
             order.save()
             
             # If home collection, confirm the schedule
@@ -629,6 +724,165 @@ class LabUpdateOrderStatusView(views.APIView):
             'message': f'Order status updated to {new_status}',
             'order': TestOrderSerializer(order).data
         })
+
+
+class LabSendQuoteView(views.APIView):
+    """Send price quote to patient for test order"""
+    permission_classes = [IsAuthenticated, IsVerifiedLaboratory]
+    
+    def post(self, request, order_id):
+        """Send quote to patient"""
+        try:
+            order = TestOrder.objects.get(
+                id=order_id,
+                laboratory=request.user,
+                status='pending'
+            )
+        except TestOrder.DoesNotExist:
+            return Response({'error': 'Order not found or not pending'}, status=404)
+        
+        estimated_cost = request.data.get('estimated_cost')
+        quote_notes = request.data.get('quote_notes', '')
+        
+        if not estimated_cost:
+            return Response({'error': 'Estimated cost is required'}, status=400)
+        
+        try:
+            estimated_cost = float(estimated_cost)
+        except (ValueError, TypeError):
+            return Response({'error': 'Invalid cost value'}, status=400)
+        
+        # Update order
+        order.estimated_cost = estimated_cost
+        order.quote_notes = quote_notes
+        order.lab_notes = request.data.get('lab_notes', quote_notes)
+        order.quote_sent_at = timezone.now()
+        order.status = 'quote_sent'
+        order.save()
+        
+        # Send email notification to patient
+        try:
+            email_service = EmailService()
+            lab_name = request.user.laboratory_profile.name if hasattr(request.user, 'laboratory_profile') else request.user.email
+            
+            email_service.send_email(
+                to_email=order.patient.email,
+                subject=f"Quote Received - Test Order #{order.order_number}",
+                html_content=f"""
+                <h2>Test Order Quote</h2>
+                <p>You have received a price quote for your lab test order.</p>
+                <p><strong>Order Number:</strong> {order.order_number}</p>
+                <p><strong>Laboratory:</strong> {lab_name}</p>
+                <p><strong>Tests:</strong> {', '.join(order.tests_requested)}</p>
+                <p><strong>Estimated Cost:</strong> ${estimated_cost:.2f}</p>
+                {f"<p><strong>Notes:</strong> {quote_notes}</p>" if quote_notes else ""}
+                <p>Please log in to your MedBuddy dashboard to accept or decline this quote.</p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to send quote notification: {e}")
+        
+        # Notify doctor if applicable
+        if order.doctor:
+            try:
+                email_service = EmailService()
+                email_service.send_email(
+                    to_email=order.doctor.email,
+                    subject=f"Quote Sent - Order #{order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Sent to Patient</h2>
+                    <p>The laboratory has sent a quote for your test order.</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Patient:</strong> {order.patient.get_full_name() or order.patient.email}</p>
+                    <p><strong>Estimated Cost:</strong> ${estimated_cost:.2f}</p>
+                    <p>Waiting for patient's response.</p>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to send doctor notification: {e}")
+        
+        return Response({
+            'message': 'Quote sent to patient successfully',
+            'order': TestOrderSerializer(order).data
+        })
+
+
+class PatientQuoteResponseView(views.APIView):
+    """Patient accepts or rejects a quote"""
+    permission_classes = [IsAuthenticated, IsPatientUser]
+    
+    def post(self, request, order_id):
+        action = request.data.get('action')  # 'accept' or 'reject'
+        
+        try:
+            order = TestOrder.objects.get(
+                id=order_id,
+                patient=request.user,
+                status='quote_sent'
+            )
+        except TestOrder.DoesNotExist:
+            return Response({'error': 'Order not found or quote not pending'}, status=404)
+        
+        if action == 'accept':
+            order.status = 'quote_accepted'
+            order.patient_response_at = timezone.now()
+            order.save()
+            
+            # Notify laboratory
+            try:
+                email_service = EmailService()
+                lab_name = order.laboratory.laboratory_profile.name if hasattr(order.laboratory, 'laboratory_profile') else order.laboratory.email
+                
+                email_service.send_email(
+                    to_email=order.laboratory.email,
+                    subject=f"Quote Accepted - Order #{order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Accepted</h2>
+                    <p>The patient has accepted your quote.</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Patient:</strong> {order.patient.get_full_name() or order.patient.email}</p>
+                    <p><strong>Accepted Amount:</strong> ${order.estimated_cost:.2f}</p>
+                    <p>Please log in to proceed with accepting the order.</p>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to send quote acceptance notification: {e}")
+            
+            return Response({
+                'message': 'Quote accepted successfully',
+                'order': TestOrderSerializer(order).data
+            })
+        
+        elif action == 'reject':
+            rejection_reason = request.data.get('rejection_reason', '')
+            order.status = 'quote_rejected'
+            order.patient_response_at = timezone.now()
+            order.patient_rejection_reason = rejection_reason
+            order.save()
+            
+            # Notify laboratory
+            try:
+                email_service = EmailService()
+                email_service.send_email(
+                    to_email=order.laboratory.email,
+                    subject=f"Quote Rejected - Order #{order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Rejected</h2>
+                    <p>The patient has rejected your quote.</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Patient:</strong> {order.patient.get_full_name() or order.patient.email}</p>
+                    {f"<p><strong>Reason:</strong> {rejection_reason}</p>" if rejection_reason else ""}
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to send quote rejection notification: {e}")
+            
+            return Response({
+                'message': 'Quote rejected',
+                'order': TestOrderSerializer(order).data
+            })
+        
+        return Response({'error': 'Invalid action. Use "accept" or "reject"'}, status=400)
 
 
 # ============================================
@@ -1068,7 +1322,8 @@ class LabUploadReportWithAnalysisView(views.APIView):
                 logger.error(traceback.format_exc())
         
         report.has_critical_values = has_critical
-        report.abnormal_values = [cv['test_name'] for cv in critical_values]
+        # Store full abnormal value data, not just test names
+        report.abnormal_values = critical_values
         report.status = 'analyzed'
         report.save()
         

@@ -164,33 +164,34 @@ export default function LabReportDetail() {
   }
 
   const getSeverityColor = (severity) => {
-    switch(severity?.toLowerCase()) {
-      case 'critical_low':
-      case 'critical_high':
-      case 'panic':
-        return 'bg-red-100 text-red-700 border-red-200'
-      case 'significant':
-        return 'bg-orange-100 text-orange-700 border-orange-200'
-      case 'moderate':
-        return 'bg-amber-100 text-amber-700 border-amber-200'
-      case 'abnormal':
-      case 'mild':
-      default:
-        return 'bg-yellow-100 text-yellow-700 border-yellow-200'
+    const sev = severity?.toLowerCase() || ''
+    if (sev.includes('critical') || sev === 'panic') {
+      return 'bg-red-100 text-red-700 border-red-200'
     }
+    if (sev === 'significant' || sev === 'high') {
+      return 'bg-orange-100 text-orange-700 border-orange-200'
+    }
+    if (sev === 'moderate' || sev === 'low') {
+      return 'bg-amber-100 text-amber-700 border-amber-200'
+    }
+    // Default for abnormal, mild, or unknown
+    return 'bg-yellow-100 text-yellow-700 border-yellow-200'
   }
 
   const getSeverityLabel = (severity) => {
-    switch(severity?.toLowerCase()) {
-      case 'critical_low': return 'Critical Low'
-      case 'critical_high': return 'Critical High'
-      case 'panic': return 'PANIC'
-      case 'significant': return 'Significant'
-      case 'moderate': return 'Moderate'
-      case 'abnormal': return 'Abnormal'
-      case 'mild': return 'Mild'
-      default: return severity || 'Abnormal'
-    }
+    const sev = severity?.toLowerCase() || ''
+    if (sev === 'critical_low') return 'Critical Low'
+    if (sev === 'critical_high') return 'Critical High'
+    if (sev === 'panic') return 'PANIC'
+    if (sev === 'significant') return 'Significant'
+    if (sev === 'moderate') return 'Moderate'
+    if (sev === 'abnormal') return 'Abnormal'
+    if (sev === 'mild') return 'Mild'
+    if (sev === 'high') return 'High'
+    if (sev === 'low') return 'Low'
+    if (sev === 'normal') return 'Normal'
+    // Capitalize first letter for any other value
+    return severity ? severity.charAt(0).toUpperCase() + severity.slice(1) : 'Abnormal'
   }
 
   if (loading) {
@@ -616,36 +617,46 @@ export default function LabReportDetail() {
               </span>
             </div>
             <div className="space-y-3">
-              {report.abnormal_values.map((item, i) => (
-                <div key={i} className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-semibold text-secondary-800 text-lg">{item.test_name}</span>
-                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${getSeverityColor(item.severity)}`}>
-                      {getSeverityLabel(item.severity)}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-2">
-                    <div className="bg-gray-50 p-2 rounded">
-                      <span className="text-secondary-500 block text-xs uppercase tracking-wide">Result</span>
-                      <span className="font-semibold text-secondary-800 text-base">
-                        {item.result || item.measured_value || 'N/A'} {item.unit}
+              {report.abnormal_values.map((item, i) => {
+                // Handle various field name patterns from different analysis versions
+                const testName = item.test_name || item.parameter || item.name || item.test || 'Unknown Test'
+                const resultValue = item.result || item.measured_value || item.value || 'N/A'
+                const normalRange = item.expected || item.normal_range || item.reference_range || item.range || 'N/A'
+                const severity = item.severity || item.status || 'abnormal'
+                const meaning = item.meaning || item.description || item.explanation || ''
+                const unit = item.unit || ''
+                
+                return (
+                  <div key={i} className="p-4 bg-white rounded-xl border border-gray-100 shadow-sm">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-secondary-800 text-lg">{testName}</span>
+                      <span className={`text-xs font-bold px-3 py-1 rounded-full ${getSeverityColor(severity)}`}>
+                        {getSeverityLabel(severity)}
                       </span>
                     </div>
-                    <div className="bg-gray-50 p-2 rounded">
-                      <span className="text-secondary-500 block text-xs uppercase tracking-wide">Normal Range</span>
-                      <span className="font-semibold text-secondary-800 text-base">
-                        {item.expected || item.normal_range || 'N/A'}
-                      </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm mb-2">
+                      <div className="bg-gray-50 p-2 rounded">
+                        <span className="text-secondary-500 block text-xs uppercase tracking-wide">Result</span>
+                        <span className="font-semibold text-secondary-800 text-base">
+                          {resultValue} {unit}
+                        </span>
+                      </div>
+                      <div className="bg-gray-50 p-2 rounded">
+                        <span className="text-secondary-500 block text-xs uppercase tracking-wide">Normal Range</span>
+                        <span className="font-semibold text-secondary-800 text-base">
+                          {normalRange}
+                        </span>
+                      </div>
                     </div>
+                    {meaning && (
+                      <p className="text-sm text-secondary-600 mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
+                        <Info className="w-4 h-4 inline mr-2 text-blue-500" />
+                        {meaning}
+                      </p>
+                    )}
                   </div>
-                  {(item.meaning || item.description) && (
-                    <p className="text-sm text-secondary-600 mt-3 p-3 bg-blue-50 rounded-lg border border-blue-100">
-                      <Info className="w-4 h-4 inline mr-2 text-blue-500" />
-                      {item.meaning || item.description}
-                    </p>
-                  )}
-                </div>
-              ))}
+                )
+              })}
             </div>
           </motion.div>
 

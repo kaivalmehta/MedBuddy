@@ -7,15 +7,18 @@ import { useState, useEffect } from 'react'
 import { 
   History, FileText, Search, ChevronDown, ChevronUp, Pill, 
   AlertTriangle, Shield, Activity, CheckCircle, XCircle,
-  TrendingUp, Clock, AlertCircle
+  TrendingUp, Clock, AlertCircle, Loader2, Sparkles
 } from 'lucide-react'
 import api from '../../services/api'
+import usePageTranslation from '../../hooks/usePageTranslation'
 
 export default function DoctorHistory() {
   const [prescriptions, setPrescriptions] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState(null)
+  const [analyzingId, setAnalyzingId] = useState(null)
+  const { t, isTranslating } = usePageTranslation()
 
   useEffect(() => {
     loadHistory()
@@ -29,6 +32,34 @@ export default function DoctorHistory() {
       console.error('Failed to load history:', err)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const analyzePrescription = async (prescriptionId) => {
+    setAnalyzingId(prescriptionId)
+    try {
+      const res = await api.post(`/doctor/prescription/${prescriptionId}/analyze/`)
+      // Update the prescription in the list with new data
+      setPrescriptions(prev => prev.map(p => {
+        if (p.id === prescriptionId) {
+          return {
+            ...p,
+            status: res.data.status,
+            drugs_count: res.data.drugs_count,
+            overall_safety_percentage: res.data.overall_safety_percentage,
+            safety_status: res.data.safety_status,
+            total_interactions: res.data.total_interactions,
+            critical_warnings: res.data.critical_warnings,
+            medications: res.data.medications
+          }
+        }
+        return p
+      }))
+    } catch (err) {
+      console.error('Failed to analyze prescription:', err)
+      alert(err.response?.data?.error || 'Failed to analyze prescription')
+    } finally {
+      setAnalyzingId(null)
     }
   }
 
@@ -70,7 +101,10 @@ export default function DoctorHistory() {
             <History className="w-6 h-6 text-amber-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-display font-bold text-secondary-800">Sent Prescriptions</h1>
+            <h1 className="text-2xl font-display font-bold text-secondary-800">
+              {t('sent_prescriptions')}
+              {isTranslating && <Loader2 className="w-4 h-4 inline ml-2 animate-spin" />}
+            </h1>
             <p className="text-secondary-500">History with detailed safety analysis</p>
           </div>
         </div>
@@ -83,7 +117,7 @@ export default function DoctorHistory() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by patient email..."
+          placeholder={`${t('search')}...`}
           className="input-field pl-12"
         />
       </div>
@@ -144,6 +178,43 @@ export default function DoctorHistory() {
               {/* Expanded Details */}
               {expandedId === p.id && (
                 <div className="mt-4 pt-4 border-t space-y-4">
+                  {/* Analyze Button - Show if not analyzed or no medications */}
+                  {(p.status !== 'analyzed' || p.drugs_count === 0) && (
+                    <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                            <Sparkles className="w-5 h-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium text-purple-800">{t('prescription_not_analyzed')}</h4>
+                            <p className="text-sm text-purple-600">{t('run_ai_analysis')}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            analyzePrescription(p.id)
+                          }}
+                          disabled={analyzingId === p.id}
+                          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50"
+                        >
+                          {analyzingId === p.id ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              {t('analyzing')}
+                            </>
+                          ) : (
+                            <>
+                              <Activity className="w-4 h-4" />
+                              {t('analyze_now')}
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Patient Context */}
                   {(p.patient_allergies?.length > 0 || p.patient_conditions?.length > 0) && (
                     <div className="p-4 bg-amber-50 rounded-xl">

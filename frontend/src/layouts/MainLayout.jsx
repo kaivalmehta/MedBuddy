@@ -12,7 +12,7 @@ import {
   FilePlus, ClipboardList, History, Send, TestTube, TrendingUp, Building2, Globe,
   ShieldAlert, Clock, ShoppingCart
 } from 'lucide-react'
-import { LanguageSelector } from '../components/Translation'
+import HeaderLanguageSelector from '../components/HeaderLanguageSelector'
 
 // Navigation items for each role
 const patientNav = [
@@ -232,9 +232,9 @@ export default function MainLayout() {
               </h1>
             </div>
 
-            {/* Language Selector */}
+            {/* Language Selector - with wrapper for better visibility */}
             <div className="flex items-center gap-4">
-              <LanguageSelector variant="minimal" />
+              <HeaderLanguageSelector />
             </div>
           </div>
         </header>

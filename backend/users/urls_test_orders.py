@@ -29,6 +29,7 @@ urlpatterns = [
     # ============================================
     path('lab/orders/', views.LabTestOrdersView.as_view(), name='lab_test_orders'),
     path('lab/orders/<uuid:order_id>/', views.LabTestOrderDetailView.as_view(), name='lab_test_order_detail'),
+    path('lab/orders/<uuid:order_id>/quote/', views.LabSendQuoteView.as_view(), name='lab_send_quote'),
     path('lab/orders/<uuid:order_id>/status/', views.LabUpdateOrderStatusView.as_view(), name='lab_update_order_status'),
     
     # ============================================
@@ -54,4 +55,5 @@ urlpatterns = [
     path('patient/orders/', views.PatientTestOrdersView.as_view(), name='patient_test_orders'),
     path('patient/orders/create/', views.PatientCreateTestOrderView.as_view(), name='patient_create_test_order'),
     path('patient/orders/<uuid:order_id>/', views.PatientTestOrderDetailView.as_view(), name='patient_test_order_detail'),
+    path('patient/orders/<uuid:order_id>/quote-response/', views.PatientQuoteResponseView.as_view(), name='patient_quote_response'),
 ]

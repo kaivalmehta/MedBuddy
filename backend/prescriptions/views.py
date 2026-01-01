@@ -855,7 +855,16 @@ class PatientLabReportAnalyzeView(views.APIView):
                 )
             
             report.has_critical_values = has_critical
-            report.abnormal_values = [av.get('test_name', '') for av in abnormal_values]
+            # Store full abnormal value data, not just test names
+            report.abnormal_values = [{
+                'test_name': av.get('test_name', 'Unknown Test'),
+                'severity': av.get('severity', 'abnormal'),
+                'result': av.get('result', av.get('measured_value', '')),
+                'expected': av.get('expected', av.get('normal_range', '')),
+                'meaning': av.get('meaning', av.get('description', '')),
+                'unit': av.get('unit', ''),
+                'recommendation': av.get('recommendation', ''),
+            } for av in abnormal_values]
             report.recommendations = analysis.get('recommendations', [])
             report.status = 'analyzed'
             report.save()
