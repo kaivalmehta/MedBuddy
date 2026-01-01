@@ -148,73 +148,76 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <AnimatePresence mode="wait">
-          {step === 'email' && (
-            <motion.div
-              key="email"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="w-full"
+    >
+      <AnimatePresence mode="wait">
+        {step === 'email' && (
+          <motion.div
+            key="email"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+          >
+            <Link
+              to="/login"
+              className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6"
             >
-              <Link
-                to="/login"
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-6"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to login
-              </Link>
+              <ArrowLeft className="w-4 h-4" />
+              Back to login
+            </Link>
 
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Lock className="w-8 h-8 text-blue-600" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-800">
-                  Forgot your password?
-                </h2>
-                <p className="mt-2 text-gray-600">
-                  No worries! Enter your email and we'll send you a reset code.
-                </p>
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Lock className="w-8 h-8 text-primary-600" />
               </div>
+              <h2 className="text-2xl font-bold text-gray-800">
+                Forgot your password?
+              </h2>
+              <p className="mt-2 text-gray-600">
+                No worries! Enter your email and we'll send you a reset code.
+              </p>
+            </div>
 
-              {error && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="mb-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center gap-2"
-                >
-                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm">{error}</span>
-                </motion.div>
-              )}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mb-6 p-3 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center gap-2"
+              >
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <span className="text-sm">{error}</span>
+              </motion.div>
+            )}
 
-              <form onSubmit={handleSubmit(onSubmitEmail)} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="email"
-                      {...register('email', {
-                        required: 'Email is required',
-                        pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' }
-                      })}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="you@example.com"
-                    />
-                  </div>
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>
+            <form onSubmit={handleSubmit(onSubmitEmail)} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="email"
+                    {...register('email', {
+                      required: 'Email is required',
+                      pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' }
+                    })}
+                    className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                    placeholder="you@example.com"
+                  />
+                </div>
+                {errors.email && (
+                  <p className="mt-1 text-sm text-red-500">{errors.email.message}</p>
                   )}
                 </div>
 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                  className="w-full btn-primary text-white py-3 rounded-lg  transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -245,8 +248,8 @@ export default function ForgotPassword() {
               </button>
 
               <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Shield className="w-8 h-8 text-blue-600" />
+                <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="w-8 h-8 text-primary-600" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-800">
                   Check your email
@@ -280,7 +283,7 @@ export default function ForgotPassword() {
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
                     onPaste={handleOtpPaste}
-                    className="w-12 h-14 text-center text-xl font-semibold border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                    className="w-12 h-14 text-center text-xl font-semibold border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all"
                     disabled={loading}
                   />
                 ))}
@@ -289,7 +292,7 @@ export default function ForgotPassword() {
               <button
                 onClick={() => handleOtpSubmit(otpValues.join(''))}
                 disabled={loading || otpValues.some(v => !v)}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2 mb-4"
+                className="w-full btn-primary text-white py-3 rounded-lg  transition disabled:opacity-50 font-medium flex items-center justify-center gap-2 mb-4"
               >
                 {loading ? (
                   <>
@@ -311,7 +314,7 @@ export default function ForgotPassword() {
                   <button
                     onClick={handleResendOTP}
                     disabled={loading}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Resend code
                   </button>
@@ -363,7 +366,7 @@ export default function ForgotPassword() {
                         required: 'Password is required',
                         minLength: { value: 8, message: 'At least 8 characters' }
                       })}
-                      className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full pl-10 pr-12 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       placeholder="••••••••"
                     />
                     <button
@@ -391,7 +394,7 @@ export default function ForgotPassword() {
                         required: 'Please confirm password',
                         validate: v => v === password || 'Passwords do not match'
                       })}
-                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                       placeholder="••••••••"
                     />
                   </div>
@@ -403,7 +406,7 @@ export default function ForgotPassword() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                  className="w-full btn-primary text-white py-3 rounded-lg  transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -436,14 +439,13 @@ export default function ForgotPassword() {
               </p>
               <Link
                 to="/login"
-                className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-medium"
+                className="inline-block btn-primary text-white px-6 py-3 rounded-lg transition font-medium"
               >
                 Sign in
               </Link>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </div>
+      </motion.div>
   )
 }

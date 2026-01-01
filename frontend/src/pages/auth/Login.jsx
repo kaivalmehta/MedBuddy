@@ -4,7 +4,7 @@ import { useAuth } from '../../context/AuthContext'
 import { initiateLogin, verifyLoginOTP, resendLoginOTP } from '../../services/api'
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader2, Shield, ArrowLeft, Volume2, VolumeX, Globe } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 
 // Translations for multiple languages
 const translations = {
@@ -169,8 +169,9 @@ const languageOptions = [
 ]
 
 export default function Login() {
-  const { setAuth } = useAuth()
+  const { setAuth, sessionExpired: authSessionExpired, clearSessionExpired } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
 
   // Steps: 'credentials' | 'otp'
@@ -192,8 +193,19 @@ export default function Login() {
   
   const t = translations[language]
 
-  // Check for session expired parameter
-  const sessionExpired = searchParams.get('session_expired') === 'true'
+  // Check for session expired from multiple sources
+  const sessionExpiredFromParams = searchParams.get('session_expired') === 'true'
+  const sessionExpiredFromState = location.state?.message?.includes('expired')
+  const sessionExpired = authSessionExpired || sessionExpiredFromParams || sessionExpiredFromState
+
+  // Clear session expired when user starts typing
+  useEffect(() => {
+    return () => {
+      if (clearSessionExpired) {
+        clearSessionExpired()
+      }
+    }
+  }, [])
 
   // Speech synthesis
   const speak = (text) => {
