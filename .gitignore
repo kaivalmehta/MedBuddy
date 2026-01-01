@@ -258,3 +258,5 @@ coverage.xml
 __pycache__/
 *.pyc
 *.log
+.env
+frontend/.env
