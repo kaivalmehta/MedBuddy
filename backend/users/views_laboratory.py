@@ -432,7 +432,7 @@ class LabTestOrderDetailView(views.APIView):
         try:
             order = TestOrder.objects.select_related(
                 'doctor', 'patient'
-            ).prefetch_related('home_collection').get(
+            ).prefetch_related('home_collection', 'reports').get(
                 id=order_id,
                 laboratory=request.user
             )
@@ -452,6 +452,17 @@ class LabTestOrderDetailView(views.APIView):
             }
         except HealthProfile.DoesNotExist:
             data['patient_health_profile'] = None
+        
+        # Get uploaded reports for this order
+        data['reports'] = [{
+            'id': str(r.id),
+            'report_title': r.report_title,
+            'report_type': r.report_type,
+            'report_date': r.report_date.isoformat() if r.report_date else None,
+            'status': r.status,
+            'has_critical_values': r.has_critical_values,
+            'created_at': r.created_at.isoformat(),
+        } for r in order.reports.all()]
         
         return Response(data)
     
@@ -1074,11 +1085,13 @@ class LabUploadReportWithAnalysisView(views.APIView):
         
         logger.info(f"Report saved. Has critical: {has_critical}, Abnormal count: {len(critical_values)}")
         
-        # Update test order if linked
-        if test_order:
-            test_order.status = 'completed'
-            test_order.completed_at = timezone.now()
-            test_order.save()
+        # Update test order if linked - mark as processing (not completed)
+        # Lab will explicitly mark as completed after uploading all reports
+        if test_order and test_order.status != 'completed':
+            # Only change to processing if it was accepted/sample_collected
+            if test_order.status in ['accepted', 'sample_collected']:
+                test_order.status = 'processing'
+                test_order.save()
         
         # Send notifications
         from prescriptions.azure_email_service import AzureEmailService
@@ -1140,10 +1153,14 @@ class LabUploadReportWithAnalysisView(views.APIView):
                 report.email_sent = True
                 report.email_sent_at = timezone.now()
                 report.save()
+                print(f"Email sent successfully to {patient.email}")
             except Exception as e:
+                print(f"ERROR sending lab upload email: {e}")
                 logger.error(f"Failed to send patient email: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
+        elif test_order:
+            print(f"Skipping email - will be sent when order {test_order.order_number} is completed")
         
         # If critical values, also notify referring doctor
         if has_critical and referring_doctor:
@@ -1399,3 +1416,108 @@ class PatientCreateTestOrderView(views.APIView):
             'order_id': str(order.id),
             'order_number': order.order_number
         }, status=201)
+
+
+class LabCompleteOrderView(views.APIView):
+    """Lab marks an order as completed after uploading all reports"""
+    permission_classes = [IsAuthenticated, IsVerifiedLaboratory]
+    
+    def post(self, request, order_id):
+        from prescriptions.models import TestOrder, LabReport
+        from prescriptions.services import AzureServices
+        
+        try:
+            order = TestOrder.objects.get(
+                id=order_id,
+                laboratory=request.user
+            )
+        except TestOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        # Check that at least one report has been uploaded
+        if not order.reports.exists():
+            return Response({
+                'error': 'Please upload at least one report before completing the order'
+            }, status=400)
+        
+        # Mark as completed
+        order.status = 'completed'
+        order.completed_at = timezone.now()
+        order.save()
+        
+        # Send comprehensive notification to patient with all reports
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            
+            reports = list(order.reports.all())
+            report_count = len(reports)
+            has_critical = any(r.has_critical_values for r in reports)
+            
+            # Get lab name
+            try:
+                lab_name = request.user.laboratory_profile.name
+            except:
+                lab_name = request.user.email
+            
+            # Collect all critical values from all reports
+            all_critical_values = []
+            report_summaries = []
+            
+            for report in reports:
+                report_summaries.append({
+                    'title': report.report_title,
+                    'type': report.get_report_type_display() if hasattr(report, 'get_report_type_display') else report.report_type,
+                    'has_critical': report.has_critical_values,
+                    'abnormal_values': report.abnormal_values or []
+                })
+                
+                if report.has_critical_values and report.abnormal_values:
+                    for val in report.abnormal_values:
+                        if val:
+                            all_critical_values.append(f"{report.report_title}: {val}")
+            
+            # Build critical message
+            critical_message = None
+            if has_critical and all_critical_values:
+                critical_message = f"Critical values detected: {', '.join(all_critical_values[:5])}{'...' if len(all_critical_values) > 5 else ''}. Please contact your healthcare provider immediately."
+            
+            # Build report list HTML
+            reports_html = ""
+            for summary in report_summaries:
+                status_badge = '⚠️' if summary['has_critical'] else '✅'
+                abnormal_text = f" - Abnormal: {', '.join(summary['abnormal_values'][:3])}" if summary['abnormal_values'] else ""
+                reports_html += f"<li>{status_badge} <strong>{summary['title']}</strong> ({summary['type']}){abnormal_text}</li>"
+            
+            # Get test names for the email
+            test_names = [r.report_title for r in reports]
+            
+            # Send consolidated email
+            AzureEmailService.send_lab_report_with_pdf(
+                patient_email=order.patient.email,
+                patient_name=order.patient.get_full_name() or order.patient.email,
+                report_title=f"Lab Results - Order #{order.order_number} ({report_count} report{'s' if report_count > 1 else ''})",
+                lab_name=lab_name,
+                test_names=test_names,
+                has_critical_values=has_critical,
+                critical_message=critical_message,
+                pdf_data=None,  # No single PDF attachment for multiple reports
+                pdf_filename=None
+            )
+            
+            # Mark all reports as email sent
+            for report in reports:
+                report.email_sent = True
+                report.email_sent_at = timezone.now()
+                report.save()
+                
+            logger.info(f"Sent consolidated email for order {order.order_number} with {report_count} reports to {order.patient.email}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send completion notification: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        return Response({
+            'message': 'Order marked as completed',
+            'reports_count': order.reports.count()
+        })
