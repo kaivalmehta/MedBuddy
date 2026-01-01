@@ -18,7 +18,6 @@ export default function PatientHistory() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [expandedPrescriptions, setExpandedPrescriptions] = useState({})
-  const [selectedReport, setSelectedReport] = useState(null)
 
   useEffect(() => {
     loadPatientHistory()
@@ -361,11 +360,7 @@ export default function PatientHistory() {
         {data.lab_reports?.length > 0 ? (
           <div className="space-y-3">
             {data.lab_reports.map((r) => (
-              <div 
-                key={r.id} 
-                onClick={() => setSelectedReport(r)}
-                className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-purple-50 cursor-pointer transition-colors"
-              >
+              <div key={r.id} className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
                 <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
                   <TestTube className="w-5 h-5 text-purple-600" />
                 </div>
@@ -373,13 +368,7 @@ export default function PatientHistory() {
                   <p className="font-medium text-secondary-800">{r.report_title}</p>
                   <p className="text-sm text-secondary-500">{r.report_type} • {r.laboratory_name || 'Unknown Lab'}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {r.has_critical_values && (
-                    <span className="px-2 py-1 bg-red-100 text-red-700 text-xs rounded-full">Critical</span>
-                  )}
-                  <p className="text-sm text-secondary-600">{new Date(r.created_at).toLocaleDateString()}</p>
-                  <ChevronDown className="w-4 h-4 text-secondary-400" />
-                </div>
+                <p className="text-sm text-secondary-600">{new Date(r.created_at).toLocaleDateString()}</p>
               </div>
             ))}
           </div>
@@ -387,134 +376,6 @@ export default function PatientHistory() {
           <p className="text-secondary-500 text-center py-4">No lab reports found</p>
         )}
       </div>
-
-      {/* Lab Report Detail Modal */}
-      {selectedReport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b sticky top-0 bg-white">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                    <TestTube className="w-6 h-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-semibold text-secondary-800">{selectedReport.report_title}</h3>
-                    <p className="text-sm text-secondary-500">{selectedReport.report_type} • {selectedReport.laboratory_name}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedReport(null)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition"
-                >
-                  <XCircle className="w-6 h-6 text-secondary-400" />
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Report Info */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-secondary-500">Report Date</p>
-                  <p className="font-medium">{selectedReport.report_date ? new Date(selectedReport.report_date).toLocaleDateString() : 'N/A'}</p>
-                </div>
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="text-xs text-secondary-500">Status</p>
-                  <p className="font-medium capitalize">{selectedReport.status || 'Received'}</p>
-                </div>
-              </div>
-
-              {/* Analysis Summary */}
-              {selectedReport.analysis_summary && (
-                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-                  <h4 className="font-medium text-purple-800 mb-2 flex items-center gap-2">
-                    <Activity className="w-4 h-4" />
-                    Analysis Summary
-                  </h4>
-                  <p className="text-secondary-600 text-sm">{selectedReport.analysis_summary}</p>
-                </div>
-              )}
-
-              {/* Abnormal Values */}
-              {selectedReport.abnormal_values && selectedReport.abnormal_values.length > 0 && (
-                <div className={`p-4 rounded-xl border-2 ${selectedReport.has_critical_values ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}>
-                  <h4 className={`font-medium mb-3 flex items-center gap-2 ${selectedReport.has_critical_values ? 'text-red-800' : 'text-amber-800'}`}>
-                    <AlertTriangle className="w-4 h-4" />
-                    Abnormal Values ({selectedReport.abnormal_values.length})
-                  </h4>
-                  <div className="space-y-2">
-                    {selectedReport.abnormal_values.map((item, i) => (
-                      <div key={i} className="p-3 bg-white rounded-lg border border-gray-100">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-secondary-800">{item.test_name}</span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
-                            item.severity?.includes('critical') ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {item.severity || 'Abnormal'}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <span className="text-secondary-500">Result: </span>
-                            <span className="font-medium">{item.result || item.measured_value || 'N/A'} {item.unit}</span>
-                          </div>
-                          <div>
-                            <span className="text-secondary-500">Normal: </span>
-                            <span className="font-medium">{item.expected || item.normal_range || 'N/A'}</span>
-                          </div>
-                        </div>
-                        {item.meaning && (
-                          <p className="text-xs text-secondary-600 mt-2 p-2 bg-blue-50 rounded">{item.meaning}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Recommendations */}
-              {selectedReport.recommendations && selectedReport.recommendations.length > 0 && (
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                  <h4 className="font-medium text-blue-800 mb-2 flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4" />
-                    Recommendations
-                  </h4>
-                  <ul className="space-y-1">
-                    {selectedReport.recommendations.map((rec, i) => (
-                      <li key={i} className="text-sm text-secondary-700 flex items-start gap-2">
-                        <span className="w-5 h-5 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs flex-shrink-0">{i + 1}</span>
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Notes */}
-              {selectedReport.notes && (
-                <div className="p-4 bg-gray-50 rounded-xl">
-                  <h4 className="font-medium text-secondary-700 mb-2">Notes</h4>
-                  <p className="text-secondary-600 text-sm">{selectedReport.notes}</p>
-                </div>
-              )}
-
-              {/* View File Button */}
-              {selectedReport.file_url && (
-                <a
-                  href={selectedReport.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition"
-                >
-                  <FileText className="w-5 h-5" />
-                  View Full Report
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

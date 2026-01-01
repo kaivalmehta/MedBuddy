@@ -22610,9 +22610,3 @@ INFO 2025-12-31 23:26:45,581 azure_email_service 22484 123145717084160 Azure Ema
 INFO 2025-12-31 23:26:45,581 views_admin 22484 123145717084160 Admin admin@medbuddy.com approved doctor kashishkaems@gmail.com
 WARNING 2025-12-31 23:27:10,083 log 22484 123145767452672 Unauthorized: /api/prescriptions/dashboard/
 WARNING 2025-12-31 23:27:10,100 log 22484 123145784242176 Unauthorized: /api/prescriptions/reminders/
-WARNING 2026-01-01 00:21:09,540 log 22484 123145599021056 Unauthorized: /api/prescriptions/dashboard/
-WARNING 2026-01-01 00:21:09,550 log 22484 123145615810560 Unauthorized: /api/prescriptions/reminders/
-WARNING 2026-01-01 00:21:11,006 log 22484 123145599021056 Unauthorized: /api/auth/token/refresh/
-WARNING 2026-01-01 00:21:11,201 log 22484 123145615810560 Unauthorized: /api/auth/token/refresh/
-INFO 2026-01-01 14:04:22,363 autoreload 27009 4349847040 Watching for file changes with StatReloader
-INFO 2026-01-01 14:07:37,341 autoreload 27175 4487468544 Watching for file changes with StatReloader

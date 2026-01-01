@@ -421,7 +421,11 @@ class LoginStep2View(views.APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
         
-        # Allow suspended users to login - they will have limited access
+        if user.is_suspended:
+            return Response(
+                {'error': f'Account suspended: {user.suspension_reason or "Contact support"}'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Verify OTP
         otp = EmailVerificationOTP.objects.filter(

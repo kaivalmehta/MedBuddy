@@ -67,22 +67,6 @@ export default function PharmacyDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Suspension Warning */}
-      {user?.is_suspended && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-medium text-red-800">Account Suspended</p>
-            <p className="text-sm text-red-700 mt-1">
-              Your account has been suspended. {user.suspension_reason ? `Reason: ${user.suspension_reason}` : 'Please contact support for more information.'}
-            </p>
-            <p className="text-sm text-red-600 mt-2">
-              Your access to patient data and prescription features is restricted until the suspension is lifted.
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Rejection Warning */}
       {user?.is_rejected && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
@@ -154,39 +138,21 @@ export default function PharmacyDashboard() {
       {/* Quick Actions */}
       <div>
         <h2 className="text-lg font-semibold text-secondary-800 mb-4">Quick Actions</h2>
-        {user?.is_suspended ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {quickActions.map((action) => (
-              <div
-                key={action.path}
-                className="card p-6 flex flex-col items-center text-center opacity-50 cursor-not-allowed"
-              >
-                <div className={`w-14 h-14 bg-gray-400 rounded-2xl flex items-center justify-center mb-4`}>
-                  <action.icon className="w-7 h-7 text-white" />
-                </div>
-                <h3 className="font-semibold text-secondary-800">{action.title}</h3>
-                <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
-                <span className="text-xs text-red-500 mt-2">Suspended</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          {quickActions.map((action) => (
+            <Link
+              key={action.path}
+              to={action.path}
+              className="card-hover p-6 flex flex-col items-center text-center group"
+            >
+              <div className={`w-14 h-14 ${action.color} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                <action.icon className="w-7 h-7 text-white" />
               </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {quickActions.map((action) => (
-              <Link
-                key={action.path}
-                to={action.path}
-                className="card-hover p-6 flex flex-col items-center text-center group"
-              >
-                <div className={`w-14 h-14 ${action.color} rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                  <action.icon className="w-7 h-7 text-white" />
-                </div>
-                <h3 className="font-semibold text-secondary-800">{action.title}</h3>
-                <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
-              </Link>
-            ))}
-          </div>
-        )}
+              <h3 className="font-semibold text-secondary-800">{action.title}</h3>
+              <p className="text-sm text-secondary-500 mt-1">{action.desc}</p>
+            </Link>
+          ))}
+        </div>
       </div>
 
       {/* Profile Summary */}
