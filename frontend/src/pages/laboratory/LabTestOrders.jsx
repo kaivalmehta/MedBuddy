@@ -99,18 +99,6 @@ export default function LabTestOrders() {
     }
   }
 
-  const handleCompleteOrder = async (orderId) => {
-    setActionLoading(orderId)
-    try {
-      await testOrderService.completeOrder(orderId)
-      loadOrders()
-    } catch (err) {
-      setError(err.response?.data?.error || 'Failed to complete order')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   const statusColors = {
     pending: 'bg-yellow-100 text-yellow-700',
     accepted: 'bg-blue-100 text-blue-700',
@@ -381,30 +369,18 @@ export default function LabTestOrders() {
                         </button>
                       )}
                       {order.status === 'processing' && (
-                        <>
-                          <Link
-                            to={`/laboratory/upload?order=${order.id}&patient=${order.patient_email}`}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-                          >
-                            <FileText className="w-4 h-4" />
-                            Upload Report{order.reports_count > 0 ? 's' : ''}
-                          </Link>
-                          {order.reports_count > 0 && (
-                            <button
-                              onClick={() => handleCompleteOrder(order.id)}
-                              disabled={actionLoading === order.id}
-                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
-                            >
-                              {actionLoading === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                              Complete Order ({order.reports_count} report{order.reports_count !== 1 ? 's' : ''})
-                            </button>
-                          )}
-                        </>
+                        <Link
+                          to={`/laboratory/upload?order=${order.id}&patient=${order.patient_email}`}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2"
+                        >
+                          <FileText className="w-4 h-4" />
+                          Upload Report & Complete
+                        </Link>
                       )}
-                      {order.reports_count > 0 && (
-                        <span className="px-3 py-1 bg-green-100 text-green-700 rounded-lg flex items-center gap-1 text-sm">
-                          <FileText className="w-3 h-3" />
-                          {order.reports_count} report{order.reports_count !== 1 ? 's' : ''} uploaded
+                      {order.has_report && (
+                        <span className="px-4 py-2 bg-green-100 text-green-700 rounded-lg flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4" />
+                          Report Uploaded
                         </span>
                       )}
                     </div>

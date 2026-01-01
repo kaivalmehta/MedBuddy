@@ -29,14 +29,12 @@ export default function LabUploadReport() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [uploadResults, setUploadResults] = useState([]) // Array of results for multiple uploads
-  const [currentFileIndex, setCurrentFileIndex] = useState(0)
+  const [uploadResult, setUploadResult] = useState(null)
   const [patientExists, setPatientExists] = useState(false)
   const [verifyingPatient, setVerifyingPatient] = useState(false)
   const [labProfile, setLabProfile] = useState(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [testOrder, setTestOrder] = useState(null)
-  const [existingReports, setExistingReports] = useState([]) // Already uploaded reports for order
 
   const reportTypes = [
     { value: 'blood_test', label: 'Blood Test' },
@@ -78,10 +76,6 @@ export default function LabUploadReport() {
         setReportTitle(res.data.tests_requested.join(', '))
       }
       setPatientExists(true)
-      // Load existing reports for this order
-      if (res.data.reports && res.data.reports.length > 0) {
-        setExistingReports(res.data.reports)
-      }
     } catch (err) {
       console.error('Failed to load test order:', err)
     }
@@ -145,74 +139,63 @@ export default function LabUploadReport() {
   }
 
   const handleSubmit = async (e) => {
-  e.preventDefault()
-
-  if (!patientExists) {
-    setError('Please enter a valid patient email')
-    return
-  }
-  if (files.length === 0) {
-    setError('Please select at least one file to upload')
-    return
-  }
-  if (!reportTitle.trim()) {
-    setError('Please enter a report title')
-    return
-  }
-
-  setStep('uploading')
-  setLoading(true)
-  setError('')
-  setUploadProgress(0)
-  setUploadResults([])
-
-  try {
-    const formData = new FormData()
-    formData.append('patient_email', email.trim().toLowerCase())
-
-    // append multiple files (backend already supports this)
-    files.forEach((file) => {
-      formData.append('report_files', file)
-    })
-
-    formData.append('report_title', reportTitle.trim())
-    formData.append('report_type', reportType)
-    formData.append('report_date', reportDate)
-    formData.append('referring_doctor', referringDoctor.trim())
-    formData.append('notes', notes.trim())
-    formData.append('send_email', sendEmail)
-
-    if (testOrderId) {
-      formData.append('test_order_id', testOrderId)
+    e.preventDefault()
+    
+    if (!patientExists) {
+      setError('Please enter a valid patient email')
+      return
+    }
+    if (files.length === 0) {
+      setError('Please select at least one file to upload')
+      return
+    }
+    if (!reportTitle.trim()) {
+      setError('Please enter a report title')
+      return
     }
 
-    const res = await testOrderService.uploadReport(formData, {
-      onUploadProgress: (progressEvent) => {
-        const percent = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total
-        )
-        setUploadProgress(percent)
-      },
-    })
+    setStep('uploading')
+    setLoading(true)
+    setError('')
+    setUploadProgress(0)
 
-    // build per-file results for UI (NO UI change)
-    const results = files.map((file) => ({
-      file: file.name,
-      ...res.data,
-    }))
+    try {
+      const formData = new FormData()
+      formData.append('patient_email', email.trim().toLowerCase())
+      
+      // Append multiple files with the same key
+      files.forEach((file) => {
+        formData.append('report_files', file)
+      })
+      
+      formData.append('report_title', reportTitle.trim())
+      formData.append('report_type', reportType)
+      formData.append('report_date', reportDate)
+      formData.append('referring_doctor', referringDoctor.trim())
+      formData.append('notes', notes.trim())
+      formData.append('send_email', sendEmail)
+      if (testOrderId) {
+        formData.append('test_order_id', testOrderId)
+      }
 
-    setUploadResults(results)
-    setUploadProgress(100)
-    setStep('success')
-  } catch (err) {
-    console.error('Upload error:', err)
-    setError(err.response?.data?.error || 'Failed to upload report')
-    setStep('error')
-  } finally {
-    setLoading(false)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => Math.min(prev + 10, 90))
+      }, 200)
+
+      const res = await testOrderService.uploadReport(formData)
+      
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+      setUploadResult(res.data)
+      setStep('success')
+    } catch (err) {
+      console.error('Upload error:', err)
+      setError(err.response?.data?.error || 'Failed to upload report')
+      setStep('error')
+    } finally {
+      setLoading(false)
+    }
   }
-}
-
 
   const handleReset = () => {
     setStep('form')
@@ -220,8 +203,7 @@ export default function LabUploadReport() {
     setReportTitle('')
     setNotes('')
     setError('')
-    setUploadResults([])
-    setCurrentFileIndex(0)
+    setUploadResult(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -466,15 +448,11 @@ export default function LabUploadReport() {
 
           {step === 'success' && (
             <motion.div key="success" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center py-12">
-              <div className={`w-20 h-20 ${uploadResults.some(r => r.has_critical_values) ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
-                {uploadResults.some(r => r.has_critical_values) ? <AlertTriangle className="w-10 h-10 text-orange-600" /> : <CheckCircle className="w-10 h-10 text-green-600" />}
+              <div className={`w-20 h-20 ${uploadResult?.has_critical_values ? 'bg-orange-100' : 'bg-green-100'} rounded-full flex items-center justify-center mx-auto mb-6`}>
+                {uploadResult?.has_critical_values ? <AlertTriangle className="w-10 h-10 text-orange-600" /> : <CheckCircle className="w-10 h-10 text-green-600" />}
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                {uploadResults.length > 1 
-                  ? `${uploadResults.length} Reports Uploaded!` 
-                  : uploadResults[0]?.has_critical_values 
-                    ? 'Report Sent with Critical Values!' 
-                    : 'Report Sent!'}
+                {uploadResult?.has_critical_values ? 'Report Sent with Critical Values!' : 'Report Sent!'}
               </h2>
               <p className="text-gray-600 mb-2">
                 {uploadResult?.files_uploaded > 1 
@@ -497,33 +475,13 @@ export default function LabUploadReport() {
                 </div>
               )}
 
-              {/* Show uploaded files */}
-              {uploadResults.length > 1 && (
-                <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left">
-                  <p className="font-medium text-gray-700 mb-2">Uploaded Files:</p>
-                  <ul className="space-y-1">
-                    {uploadResults.map((result, idx) => (
-                      <li key={idx} className="text-sm flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4 text-green-500" />
-                        <span className="text-gray-700">{result.file}</span>
-                        {result.has_critical_values && (
-                          <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">Critical</span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {uploadResults.some(r => r.has_critical_values) && (
+              {uploadResult?.has_critical_values && (
                 <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-6 text-left">
                   <p className="font-semibold text-orange-800">Critical Values Detected</p>
-                  <p className="text-sm text-orange-700">
-                    {uploadResults.reduce((sum, r) => sum + (r.critical_values_count || 0), 0)} abnormal value(s) found.
-                  </p>
-                  {uploadResults.flatMap(r => r.abnormal_values || []).length > 0 && (
+                  <p className="text-sm text-orange-700">{uploadResult.critical_values_count} abnormal value(s) found.</p>
+                  {uploadResult.abnormal_values?.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {[...new Set(uploadResults.flatMap(r => r.abnormal_values || []))].map((val, idx) => (
+                      {uploadResult.abnormal_values.map((val, idx) => (
                         <span key={idx} className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">{val}</span>
                       ))}
                     </div>
@@ -533,7 +491,7 @@ export default function LabUploadReport() {
 
               <div className="flex gap-3">
                 <button onClick={handleReset} className="flex-1 px-4 py-3 border border-purple-200 text-purple-700 rounded-lg hover:bg-purple-50">
-                  Upload More
+                  Upload Another
                 </button>
                 <Link to="/laboratory/sent" className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2">
                   <Eye className="w-5 h-5" /> View Sent

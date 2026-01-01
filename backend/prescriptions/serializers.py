@@ -428,7 +428,6 @@ class TestOrderSerializer(serializers.ModelSerializer):
     collection_type_display = serializers.CharField(source='get_collection_type_display', read_only=True)
     home_collection = HomeSampleCollectionSerializer(read_only=True)
     has_report = serializers.SerializerMethodField()
-    reports_count = serializers.SerializerMethodField()
     
     class Meta:
         model = TestOrder
@@ -442,7 +441,7 @@ class TestOrderSerializer(serializers.ModelSerializer):
             'home_collection', 'lab_notes',
             'accepted_at', 'declined_at', 'decline_reason',
             'completed_at', 'estimated_cost', 'final_cost',
-            'has_report', 'reports_count', 'created_at', 'updated_at'
+            'has_report', 'created_at', 'updated_at'
         ]
     
     def get_doctor_name(self, obj):
@@ -464,9 +463,6 @@ class TestOrderSerializer(serializers.ModelSerializer):
     
     def get_has_report(self, obj):
         return obj.reports.exists()
-    
-    def get_reports_count(self, obj):
-        return obj.reports.count()
 
 
 class TestOrderCreateSerializer(serializers.Serializer):

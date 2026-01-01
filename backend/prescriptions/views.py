@@ -661,12 +661,12 @@ class PatientDashboardView(views.APIView):
 
 
 class PatientLabReportUploadView(views.APIView):
-    """Patient uploads their own lab report - with immediate analysis and critical alerts"""
+    """Patient uploads their own lab report"""
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated]
     
     def post(self, request):
-        from .models import LabReport, CriticalValueAlert
+        from .models import LabReport
         from .services import AzureServices
         from datetime import date
         
@@ -691,13 +691,10 @@ class PatientLabReportUploadView(views.APIView):
         
         azure_services = AzureServices()
         
-        # Read file content once and store it
-        file_content = file.read()
-        
         try:
             # Upload file
             blob_name, file_url = azure_services.upload_lab_report(
-                file_content,
+                file.read(),
                 f"patient_{request.user.id}_{file.name}"
             )
         except Exception as e:
@@ -716,160 +713,41 @@ class PatientLabReportUploadView(views.APIView):
             file_type=file.name.split('.')[-1].lower(),
             blob_name=blob_name,
             notes=notes,
-            status='processing'
+            status='uploaded'
         )
         
-        # Perform OCR
-        ocr_text = ''
+        # Try OCR
         try:
-            ocr_result = azure_services.perform_ocr(file_content)
-            ocr_text = ocr_result.get('text', '')
-            report.ocr_raw_text = ocr_text
+            file.seek(0)
+            ocr_result = azure_services.perform_ocr(file.read())
+            report.ocr_raw_text = ocr_result.get('text', '')
             report.ocr_confidence = ocr_result.get('confidence')
+            report.status = 'pending'  # Not analyzed yet - user needs to click analyze
             report.save()
-            logger.info(f"Patient uploaded report. OCR text length: {len(ocr_text)}")
+            logger.info(f"Patient uploaded report. OCR text length: {len(report.ocr_raw_text)}")
         except Exception as e:
             logger.error(f"OCR failed: {e}")
-        
-        # Analyze for critical values
-        has_critical = False
-        critical_values = []
-        
-        if ocr_text:
-            try:
-                # Use Azure OpenAI to analyze
-                analysis = azure_services.analyze_lab_report(ocr_text, report_type)
-                
-                report.analysis_summary = analysis.get('summary', '')
-                report.parsed_data = analysis.get('parsed_data', {})
-                
-                abnormal_values = analysis.get('abnormal_values', [])
-                
-                # Clear any existing alerts and create new ones
-                CriticalValueAlert.objects.filter(lab_report=report).delete()
-                
-                severity_map = {
-                    'mild': 'abnormal',
-                    'moderate': 'abnormal', 
-                    'significant': 'critical_high',
-                    'critical': 'panic',
-                    'abnormal': 'abnormal',
-                    'critical_low': 'critical_low',
-                    'critical_high': 'critical_high',
-                    'panic': 'panic',
-                    'low': 'critical_low',
-                    'high': 'critical_high',
-                }
-                
-                for av in abnormal_values:
-                    raw_severity = str(av.get('severity', 'abnormal')).lower()
-                    severity = severity_map.get(raw_severity, 'abnormal')
-                    
-                    if severity in ['critical_low', 'critical_high', 'panic']:
-                        has_critical = True
-                    
-                    CriticalValueAlert.objects.create(
-                        lab_report=report,
-                        test_name=av.get('test_name', 'Unknown Test'),
-                        measured_value=av.get('result', av.get('measured_value', '')),
-                        unit=av.get('unit', ''),
-                        normal_range=av.get('expected', av.get('normal_range', '')),
-                        severity=severity,
-                        description=av.get('meaning', av.get('description', '')),
-                        recommendation=av.get('recommendation', '')
-                    )
-                    
-                    critical_values.append({
-                        'test_name': av.get('test_name', 'Unknown Test'),
-                        'measured_value': av.get('result', av.get('measured_value', '')),
-                        'severity': severity,
-                    })
-                
-                report.has_critical_values = has_critical
-                report.abnormal_values = [av.get('test_name', '') for av in abnormal_values]
-                report.recommendations = analysis.get('recommendations', [])
-                report.status = 'analyzed'
-                report.save()
-                
-                logger.info(f"Patient report analyzed. Has critical: {has_critical}, Abnormal count: {len(critical_values)}")
-                
-            except Exception as e:
-                logger.error(f"Analysis failed: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-                report.status = 'pending'
-                report.save()
-        else:
             report.status = 'pending'
             report.save()
         
-        # ALWAYS send email - regardless of analysis success
-        print(f"=== SELF-UPLOAD EMAIL DEBUG ===")
-        print(f"User email: {request.user.email}")
-        print(f"User name: {request.user.get_full_name()}")
-        print(f"Report title: {report_title}")
-        print(f"Has critical: {has_critical}")
-        print(f"Critical values count: {len(critical_values)}")
-        
+        # Send confirmation email to patient
         try:
             from .azure_email_service import AzureEmailService
-            
-            # Build critical message if we have critical values
-            critical_message = None
-            test_names = None
-            
-            if has_critical and critical_values:
-                critical_details = ", ".join([
-                    f"{cv['test_name']}: {cv['measured_value']}"
-                    for cv in critical_values
-                    if cv.get('severity') in ['critical_low', 'critical_high', 'panic']
-                ])
-                if critical_details:
-                    critical_message = f"Critical values detected: {critical_details}. Please contact your healthcare provider immediately."
-                test_names = [cv['test_name'] for cv in critical_values]
-            elif critical_values:
-                test_names = [cv['test_name'] for cv in critical_values]
-            
-            print(f"Calling send_patient_self_upload_confirmation...")
-            print(f"  patient_email: {request.user.email}")
-            print(f"  patient_name: {request.user.get_full_name() or request.user.email}")
-            print(f"  report_title: {report_title}")
-            print(f"  has_critical_values: {has_critical}")
-            print(f"  critical_message: {critical_message}")
-            print(f"  test_names: {test_names}")
-            
-            result = AzureEmailService.send_patient_self_upload_confirmation(
+            AzureEmailService.send_patient_self_upload_confirmation(
                 patient_email=request.user.email,
-                patient_name=request.user.get_full_name() or request.user.email,
-                report_title=report_title,
-                has_critical_values=has_critical,
-                critical_message=critical_message,
-                test_names=test_names
+                patient_name=request.user.get_full_name(),
+                report_title=report_title
             )
-            
-            print(f"Email send result: {result}")
-            
             report.email_sent = True
             report.email_sent_at = timezone.now()
-            if has_critical:
-                report.critical_alert_sent_at = timezone.now()
             report.save()
-            
-            print(f"Email sent successfully to {request.user.email}")
         except Exception as e:
-            print(f"ERROR sending self-upload email: {e}")
-            import traceback
-            traceback.print_exc()
             logger.error(f"Failed to send self-upload confirmation email: {e}")
-            logger.error(traceback.format_exc())
         
         return Response({
             'message': 'Report uploaded successfully',
             'report_id': str(report.id),
-            'file_url': file_url,
-            'has_critical_values': has_critical,
-            'abnormal_count': len(critical_values),
-            'status': report.status
+            'file_url': file_url
         }, status=201)
 
 
@@ -981,39 +859,6 @@ class PatientLabReportAnalyzeView(views.APIView):
             report.recommendations = analysis.get('recommendations', [])
             report.status = 'analyzed'
             report.save()
-            
-            # Send email notification if abnormal values found
-            if abnormal_values:
-                try:
-                    from .azure_email_service import AzureEmailService
-                    
-                    # Build critical message
-                    critical_message = None
-                    if has_critical:
-                        critical_details = ", ".join([
-                            f"{av.get('test_name', 'Unknown')}: {av.get('result', av.get('measured_value', 'N/A'))}"
-                            for av in abnormal_values
-                            if av.get('severity', '').lower() in ['critical', 'critical_low', 'critical_high', 'panic', 'significant']
-                        ])
-                        critical_message = f"Critical values detected: {critical_details}. Please contact your healthcare provider immediately."
-                    
-                    # Get test names for email
-                    test_names = [av.get('test_name', 'Unknown Test') for av in abnormal_values]
-                    
-                    AzureEmailService.send_patient_self_upload_confirmation(
-                        patient_email=request.user.email,
-                        patient_name=request.user.get_full_name(),
-                        report_title=report.report_title,
-                        has_critical_values=has_critical,
-                        critical_message=critical_message,
-                        test_names=test_names
-                    )
-                    
-                    report.critical_alert_sent_at = timezone.now()
-                    report.save()
-                    logger.info(f"Sent analysis email to {request.user.email} with {len(abnormal_values)} abnormal values")
-                except Exception as e:
-                    logger.error(f"Failed to send analysis email: {e}")
             
             # Format response
             formatted_abnormal = [{

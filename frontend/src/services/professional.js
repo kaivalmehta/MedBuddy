@@ -263,7 +263,6 @@ export const getLabTestOrderDetail = (orderId) => api.get(`/test-orders/lab/orde
 export const acceptTestOrder = (orderId, data) => api.post(`/test-orders/lab/orders/${orderId}/`, { action: 'accept', ...data })
 export const declineTestOrder = (orderId, reason) => api.post(`/test-orders/lab/orders/${orderId}/`, { action: 'decline', decline_reason: reason })
 export const updateTestOrderStatus = (orderId, status, data = {}) => api.post(`/test-orders/lab/orders/${orderId}/status/`, { status, ...data })
-export const completeTestOrder = (orderId) => api.post(`/test-orders/lab/orders/${orderId}/complete/`)
 
 // Lab Home Collections
 export const getLabHomeCollections = (params) => api.get('/test-orders/lab/collections/', { params })
@@ -306,7 +305,6 @@ export const testOrderService = {
   accept: acceptTestOrder,
   decline: declineTestOrder,
   updateStatus: updateTestOrderStatus,
-  completeOrder: completeTestOrder,
   
   // Home collection
   getCollections: getLabHomeCollections,
