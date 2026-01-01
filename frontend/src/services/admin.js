@@ -34,6 +34,7 @@ export const adminService = {
   
   // Users
   getUsers: (params) => api.get('/admin/users/', { params }),
+  getAllUsers: () => api.get('/admin/users/'),
   getUserDetail: (userId) => api.get(`/admin/users/${userId}/`),
   searchUsers: (query, role = '') => api.get('/admin/users/search/', { params: { q: query, role } }),
 }

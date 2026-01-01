@@ -448,6 +448,9 @@ class AdminUserListSerializer(serializers.ModelSerializer):
                 pass
         return None
 
+    def get_queryset(self):
+        queryset = User.objects.exclude(is_superuser=True).order_by('-created_at')
+
 
 class VerifyProfessionalSerializer(serializers.Serializer):
     """For admin to verify/reject professional"""
