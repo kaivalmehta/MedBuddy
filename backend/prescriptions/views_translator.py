@@ -240,6 +240,8 @@ def translate_lab_report(request, report_id):
         "target_language": "hi"
     }
     """
+    from .models import CriticalValueAlert
+    
     target_language = request.data.get('target_language')
     
     if not target_language:
@@ -253,27 +255,118 @@ def translate_lab_report(request, report_id):
         lab_report = get_object_or_404(
             LabReport,
             id=report_id,
-            patient=request.user
+            user=request.user
         )
         
-        # Prepare report data for translation
-        report_data = {
+        # Get critical value alerts for this report
+        alerts = CriticalValueAlert.objects.filter(lab_report=lab_report)
+        
+        # Build abnormal values data
+        abnormal_values = []
+        for alert in alerts:
+            abnormal_values.append({
+                'test_name': alert.test_name,
+                'measured_value': alert.measured_value,
+                'normal_range': alert.normal_range,
+                'severity': alert.severity,
+                'description': alert.description,
+                'recommendation': alert.recommendation
+            })
+        
+        # Prepare texts to translate
+        texts_to_translate = []
+        text_mapping = {}
+        
+        # Analysis summary
+        if lab_report.analysis_summary:
+            text_mapping['analysis_summary'] = len(texts_to_translate)
+            texts_to_translate.append(lab_report.analysis_summary)
+        
+        # Abnormal value descriptions and recommendations
+        for i, av in enumerate(abnormal_values):
+            if av.get('description'):
+                text_mapping[f'av_desc_{i}'] = len(texts_to_translate)
+                texts_to_translate.append(av['description'])
+            if av.get('recommendation'):
+                text_mapping[f'av_rec_{i}'] = len(texts_to_translate)
+                texts_to_translate.append(av['recommendation'])
+        
+        # Recommendations from report
+        if lab_report.recommendations:
+            for i, rec in enumerate(lab_report.recommendations):
+                if rec:
+                    text_mapping[f'rec_{i}'] = len(texts_to_translate)
+                    texts_to_translate.append(rec)
+        
+        # Notes
+        if lab_report.notes:
+            text_mapping['notes'] = len(texts_to_translate)
+            texts_to_translate.append(lab_report.notes)
+        
+        # Translate all texts in one batch
+        translated_texts = []
+        if texts_to_translate:
+            result = translator_service.translate_text(
+                text=texts_to_translate,
+                target_language=target_language,
+                is_healthcare=True
+            )
+            
+            if result['success'] and result.get('translations'):
+                translated_texts = [t['translated'] for t in result['translations']]
+            else:
+                return Response({
+                    'success': False,
+                    'error': result.get('error', 'Translation failed')
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Build translated response
+        translated_report = {
             'id': str(lab_report.id),
+            'report_title': lab_report.report_title,
             'report_type': lab_report.report_type,
-            'summary': lab_report.summary,
-            'clinical_notes': lab_report.clinical_notes,
-            'interpretation': lab_report.interpretation,
-            'recommendations': lab_report.recommendations,
-            'results': lab_report.results or []
+            'laboratory_name': lab_report.laboratory_name,
+            'target_language': target_language
         }
         
-        # Translate report
-        result = translator_service.translate_lab_report(report_data, target_language)
+        # Map translated texts back
+        if 'analysis_summary' in text_mapping:
+            translated_report['analysis_summary_translated'] = translated_texts[text_mapping['analysis_summary']]
         
-        if result['success']:
-            return Response(result)
-        else:
-            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Translated abnormal values
+        abnormal_values_translated = []
+        for i, av in enumerate(abnormal_values):
+            translated_av = {
+                'test_name': av['test_name'],
+                'measured_value': av['measured_value'],
+                'normal_range': av['normal_range'],
+                'severity': av['severity']
+            }
+            if f'av_desc_{i}' in text_mapping:
+                translated_av['meaning'] = translated_texts[text_mapping[f'av_desc_{i}']]
+            if f'av_rec_{i}' in text_mapping:
+                translated_av['recommendation'] = translated_texts[text_mapping[f'av_rec_{i}']]
+            abnormal_values_translated.append(translated_av)
+        
+        translated_report['abnormal_values_translated'] = abnormal_values_translated
+        
+        # Translated recommendations
+        recommendations_translated = []
+        for i in range(len(lab_report.recommendations or [])):
+            if f'rec_{i}' in text_mapping:
+                recommendations_translated.append(translated_texts[text_mapping[f'rec_{i}']])
+        translated_report['recommendations_translated'] = recommendations_translated
+        
+        # Translated notes
+        if 'notes' in text_mapping:
+            translated_report['notes_translated'] = translated_texts[text_mapping['notes']]
+        
+        return Response({
+            'success': True,
+            'translated_report': translated_report,
+            'source_language': 'en',
+            'target_language': target_language
+        })
             
     except LabReport.DoesNotExist:
         return Response({
@@ -282,6 +375,8 @@ def translate_lab_report(request, report_id):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         logger.error(f"Lab report translation error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         return Response({
             'success': False,
             'error': str(e)

@@ -442,12 +442,34 @@ class PatientLabReportDetailView(views.APIView):
     permission_classes = [IsAuthenticated]
     
     def get(self, request, report_id):
-        from .models import LabReport, CriticalValueAlert
+        from .models import LabReport, CriticalValueAlert, LabReportFile
         
         try:
             report = LabReport.objects.get(id=report_id, user=request.user)
         except LabReport.DoesNotExist:
             return Response({'error': 'Report not found'}, status=404)
+        
+        # Get all files for this report
+        report_files = LabReportFile.objects.filter(lab_report=report).order_by('created_at')
+        files_list = [{
+            'id': str(f.id),
+            'file_url': f.file_url,
+            'file_type': f.file_type,
+            'original_filename': f.original_filename,
+            'file_size': f.file_size,
+            'created_at': f.created_at.isoformat()
+        } for f in report_files]
+        
+        # If no files in LabReportFile, use the main file_url for backward compatibility
+        if not files_list and report.file_url:
+            files_list = [{
+                'id': str(report.id),
+                'file_url': report.file_url,
+                'file_type': report.file_type,
+                'original_filename': f"{report.report_title}.{report.file_type}",
+                'file_size': 0,
+                'created_at': report.created_at.isoformat()
+            }]
         
         # Get associated critical value alerts
         alerts = CriticalValueAlert.objects.filter(lab_report=report)
@@ -528,6 +550,8 @@ class PatientLabReportDetailView(views.APIView):
             'referring_doctor': report.referring_doctor,
             'file_url': report.file_url,
             'file_type': report.file_type,
+            'files': files_list,  # All files for this report
+            'files_count': len(files_list),
             'status': status,
             'source': report.source,
             'has_critical_values': report.has_critical_values,

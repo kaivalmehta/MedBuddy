@@ -845,14 +845,23 @@ class CriticalValueAnalysisService:
 
 
 class LabUploadReportWithAnalysisView(views.APIView):
-    """Upload report with critical value analysis"""
+    """Upload report with critical value analysis - supports multiple files"""
     parser_classes = [MultiPartParser, FormParser]
     permission_classes = [IsAuthenticated, IsVerifiedLaboratory]
     
     @transaction.atomic
     def post(self, request):
+        from prescriptions.models import LabReportFile
+        
         patient_email = request.data.get('patient_email')
-        file = request.FILES.get('report_file')
+        # Support both single file and multiple files
+        files = request.FILES.getlist('report_files')  # New: multiple files
+        single_file = request.FILES.get('report_file')  # Backward compatibility
+        
+        # Combine files - support both old and new format
+        if single_file and not files:
+            files = [single_file]
+        
         report_type = request.data.get('report_type', 'other')
         report_title = request.data.get('report_title', 'Lab Report')
         report_date = request.data.get('report_date')
@@ -864,13 +873,16 @@ class LabUploadReportWithAnalysisView(views.APIView):
         if not patient_email:
             return Response({'error': 'Patient email is required'}, status=400)
         
-        if not file:
-            return Response({'error': 'Report file is required'}, status=400)
+        if not files:
+            return Response({'error': 'At least one report file is required'}, status=400)
         
-        # Validate file
+        # Validate all files
         allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
-        if file.content_type not in allowed_types:
-            return Response({'error': 'Invalid file type'}, status=400)
+        for file in files:
+            if file.content_type not in allowed_types:
+                return Response({'error': f'Invalid file type for {file.name}. Allowed: PDF, JPG, PNG'}, status=400)
+            if file.size > 10 * 1024 * 1024:  # 10MB limit per file
+                return Response({'error': f'File {file.name} exceeds 10MB limit'}, status=400)
         
         # Get patient
         try:
@@ -890,16 +902,7 @@ class LabUploadReportWithAnalysisView(views.APIView):
             except TestOrder.DoesNotExist:
                 pass
         
-        # Upload file to Azure
         azure_services = AzureServices()
-        try:
-            blob_name, file_url = azure_services.upload_lab_report(
-                file.read(),
-                f"lab_{patient.id}_{timezone.now().timestamp()}.{file.name.split('.')[-1]}"
-            )
-        except Exception as e:
-            logger.error(f"File upload failed: {e}")
-            return Response({'error': 'Failed to upload file'}, status=500)
         
         # Get lab name
         try:
@@ -907,7 +910,19 @@ class LabUploadReportWithAnalysisView(views.APIView):
         except:
             lab_name = request.user.email
         
-        # Create report
+        # Upload first file for backward compatibility (primary file on LabReport)
+        first_file = files[0]
+        try:
+            first_file.seek(0)
+            blob_name, file_url = azure_services.upload_lab_report(
+                first_file.read(),
+                f"lab_{patient.id}_{timezone.now().timestamp()}.{first_file.name.split('.')[-1]}"
+            )
+        except Exception as e:
+            logger.error(f"File upload failed: {e}")
+            return Response({'error': 'Failed to upload file'}, status=500)
+        
+        # Create report with first file info (backward compatible)
         report = LabReport.objects.create(
             user=patient,
             source='laboratory',
@@ -918,24 +933,74 @@ class LabUploadReportWithAnalysisView(views.APIView):
             laboratory_name=lab_name,
             referring_doctor=referring_doctor,
             file_url=file_url,
-            file_type=file.name.split('.')[-1].lower(),
+            file_type=first_file.name.split('.')[-1].lower(),
             blob_name=blob_name,
             notes=notes,
             test_order=test_order,
             status='processing'
         )
         
-        # Perform OCR
-        try:
-            file.seek(0)
-            ocr_result = azure_services.perform_ocr(file.read())
-            report.ocr_raw_text = ocr_result.get('text', '')
-            report.ocr_confidence = ocr_result.get('confidence')
-            report.parsed_data = ocr_result.get('parsed_data', {})
-            report.save()
-            logger.info(f"OCR completed. Text length: {len(report.ocr_raw_text)}")
-        except Exception as e:
-            logger.error(f"OCR failed: {e}")
+        # Create LabReportFile entries for ALL files (including first)
+        all_ocr_text = []
+        uploaded_files_info = []
+        
+        for idx, file in enumerate(files):
+            try:
+                file.seek(0)
+                file_content = file.read()
+                
+                # Upload to Azure (skip first file since already uploaded)
+                if idx == 0:
+                    current_blob_name = blob_name
+                    current_file_url = file_url
+                else:
+                    current_blob_name, current_file_url = azure_services.upload_lab_report(
+                        file_content,
+                        f"lab_{patient.id}_{timezone.now().timestamp()}_{idx}.{file.name.split('.')[-1]}"
+                    )
+                
+                # Perform OCR on each file
+                ocr_text = ''
+                ocr_confidence = None
+                try:
+                    file.seek(0)
+                    ocr_result = azure_services.perform_ocr(file.read())
+                    ocr_text = ocr_result.get('text', '')
+                    ocr_confidence = ocr_result.get('confidence')
+                    all_ocr_text.append(ocr_text)
+                    logger.info(f"OCR completed for file {idx + 1}. Text length: {len(ocr_text)}")
+                except Exception as e:
+                    logger.error(f"OCR failed for file {file.name}: {e}")
+                
+                # Create LabReportFile entry
+                report_file = LabReportFile.objects.create(
+                    lab_report=report,
+                    file_url=current_file_url,
+                    file_type=file.name.split('.')[-1].lower(),
+                    blob_name=current_blob_name,
+                    original_filename=file.name,
+                    file_size=file.size,
+                    ocr_raw_text=ocr_text,
+                    ocr_confidence=ocr_confidence
+                )
+                
+                uploaded_files_info.append({
+                    'filename': file.name,
+                    'file_url': current_file_url,
+                    'size': file.size
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to process file {file.name}: {e}")
+                continue
+        
+        # Combine all OCR text for analysis
+        combined_ocr_text = "\n\n--- Next Report ---\n\n".join(all_ocr_text)
+        report.ocr_raw_text = combined_ocr_text
+        report.save()
+        
+        # Store first file for email attachment
+        file = first_file  # Use first file for backward compatibility in email
         
         # Analyze report using Azure OpenAI directly
         has_critical = False
@@ -1018,16 +1083,37 @@ class LabUploadReportWithAnalysisView(views.APIView):
         # Send notifications
         from prescriptions.azure_email_service import AzureEmailService
         
-        # Always notify patient with PDF attachment if applicable
+        # Always notify patient with file attachments if applicable
         if send_email:
             try:
-                # Get PDF content for attachment if it's a PDF
-                pdf_data = None
-                pdf_filename = None
-                if file.content_type == 'application/pdf':
-                    file.seek(0)
-                    pdf_data = file.read()
-                    pdf_filename = f"{report_title.replace(' ', '_')}_{report.report_date}.pdf"
+                # Collect all files for email attachment
+                files_for_email = []
+                for idx, f in enumerate(files):
+                    try:
+                        f.seek(0)
+                        file_data = f.read()
+                        file_ext = f.name.split('.')[-1].lower()
+                        
+                        # Determine MIME type
+                        if file_ext == 'pdf':
+                            mime_type = 'application/pdf'
+                        elif file_ext in ['jpg', 'jpeg']:
+                            mime_type = 'image/jpeg'
+                        elif file_ext == 'png':
+                            mime_type = 'image/png'
+                        else:
+                            mime_type = 'application/octet-stream'
+                        
+                        # Create a clean filename
+                        clean_name = f"{report_title.replace(' ', '_')}_{idx + 1}_{report.report_date}.{file_ext}"
+                        
+                        files_for_email.append({
+                            'data': file_data,
+                            'name': clean_name,
+                            'type': mime_type
+                        })
+                    except Exception as e:
+                        logger.error(f"Failed to prepare file {idx} for email: {e}")
                 
                 # Get test names from critical values or use report title
                 test_names = [cv['test_name'] for cv in critical_values] if critical_values else [report_type]
@@ -1039,8 +1125,8 @@ class LabUploadReportWithAnalysisView(views.APIView):
                                                   if cv.get('severity') in ['critical_low', 'critical_high', 'panic']])
                     critical_message = f"Critical values detected: {critical_details}. Please contact your healthcare provider immediately."
                 
-                # Send email with PDF attachment
-                AzureEmailService.send_lab_report_with_pdf(
+                # Send email with all file attachments
+                AzureEmailService.send_lab_report_with_files(
                     patient_email=patient.email,
                     patient_name=patient.get_full_name(),
                     report_title=report_title,
@@ -1048,8 +1134,7 @@ class LabUploadReportWithAnalysisView(views.APIView):
                     test_names=test_names,
                     has_critical_values=has_critical,
                     critical_message=critical_message,
-                    pdf_data=pdf_data,
-                    pdf_filename=pdf_filename
+                    files_data=files_for_email
                 )
                 
                 report.email_sent = True
@@ -1103,7 +1188,9 @@ class LabUploadReportWithAnalysisView(views.APIView):
             'has_critical_values': has_critical,
             'critical_values_count': len(critical_values),
             'abnormal_values': [cv['test_name'] for cv in critical_values],
-            'email_sent': report.email_sent
+            'email_sent': report.email_sent,
+            'files_uploaded': len(uploaded_files_info) if 'uploaded_files_info' in dir() else 1,
+            'files': uploaded_files_info if 'uploaded_files_info' in dir() else []
         }, status=201)
 
 

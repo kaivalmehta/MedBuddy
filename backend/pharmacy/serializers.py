@@ -138,6 +138,8 @@ class PrescriptionOrderSerializer(serializers.ModelSerializer):
     patient_name = serializers.SerializerMethodField()
     patient_email = serializers.CharField(source='patient.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    selected_medications = serializers.JSONField(read_only=True)  # Explicit JSONField
+    quote_details = serializers.JSONField(read_only=True)  # Explicit JSONField
     
     class Meta:
         model = PrescriptionOrder
@@ -190,24 +192,66 @@ class PrescriptionOrderStatusUpdateSerializer(serializers.Serializer):
 class PrescriptionOrderListSerializer(serializers.ModelSerializer):
     """Simplified serializer for listing orders"""
     pharmacy_name = serializers.CharField(source='pharmacy.name', read_only=True)
+    pharmacy_address = serializers.CharField(source='pharmacy.address', read_only=True)
     patient_name = serializers.SerializerMethodField()
+    patient_phone = serializers.SerializerMethodField()
+    patient_email = serializers.CharField(source='patient.email', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     medication_count = serializers.SerializerMethodField()
     prescription_title = serializers.SerializerMethodField()
+    selected_medications = serializers.SerializerMethodField()  # Use method for proper JSON handling
+    quote_details = serializers.SerializerMethodField()  # Use method for proper JSON handling
     
     class Meta:
         model = PrescriptionOrder
         fields = [
-            'id', 'order_number', 'pharmacy_name', 'patient_name',
-            'status', 'status_display', 'quoted_amount', 'medication_count',
-            'prescription_title', 'created_at', 'updated_at'
+            'id', 'order_number', 'pharmacy_name', 'pharmacy_address', 'patient_name',
+            'patient_email', 'patient_phone', 'status', 'status_display', 'quoted_amount', 
+            'quote_details', 'medication_count', 'selected_medications', 'patient_notes', 
+            'pharmacy_notes', 'prescription_title', 'created_at', 'updated_at'
         ]
     
     def get_patient_name(self, obj):
         return f"{obj.patient.first_name} {obj.patient.last_name}".strip() or obj.patient.email
     
+    def get_patient_phone(self, obj):
+        return getattr(obj.patient, 'phone_number', None) or getattr(obj.patient, 'phone', None)
+    
     def get_medication_count(self, obj):
-        return len(obj.selected_medications) if obj.selected_medications else 0
+        meds = obj.selected_medications
+        if isinstance(meds, str):
+            import json
+            try:
+                meds = json.loads(meds)
+            except:
+                return 0
+        return len(meds) if meds else 0
+    
+    def get_selected_medications(self, obj):
+        """Ensure selected_medications is always returned as a list"""
+        meds = obj.selected_medications
+        if meds is None:
+            return []
+        if isinstance(meds, str):
+            import json
+            try:
+                return json.loads(meds)
+            except:
+                return []
+        return meds if isinstance(meds, list) else []
+    
+    def get_quote_details(self, obj):
+        """Ensure quote_details is always returned as a dict"""
+        details = obj.quote_details
+        if details is None:
+            return None
+        if isinstance(details, str):
+            import json
+            try:
+                return json.loads(details)
+            except:
+                return None
+        return details
     
     def get_prescription_title(self, obj):
         if obj.prescription and hasattr(obj.prescription, 'medications') and obj.prescription.medications:

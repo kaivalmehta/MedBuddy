@@ -1843,6 +1843,78 @@ MedBuddy System
             return False
 
     @classmethod
+    def send_email_with_multiple_attachments(cls, to_email, subject, html_content, text_content=None, 
+                                              attachments_list=None):
+        """
+        Send email with multiple attachments using Azure Communication Services
+        
+        Args:
+            attachments_list: list of dicts with keys: data (bytes), name (filename), type (MIME type)
+        """
+        import base64
+        
+        if text_content is None:
+            import re
+            text_content = re.sub('<[^<]+?>', '', html_content)
+        
+        # Print to console for testing/debugging
+        cls._print_email_to_console(to_email, subject, text_content)
+        if attachments_list:
+            for att in attachments_list:
+                print(f"📎 Attachment: {att.get('name')} ({len(att.get('data', b''))} bytes)")
+        
+        client = cls.get_client()
+        sender_email = getattr(settings, 'AZURE_EMAIL_SENDER', None)
+        
+        # Prepare attachments
+        attachments = None
+        if attachments_list:
+            attachments = []
+            for att in attachments_list:
+                if att.get('data') and att.get('name'):
+                    attachments.append({
+                        "name": att['name'],
+                        "contentType": att.get('type', 'application/pdf'),
+                        "contentInBase64": base64.b64encode(att['data']).decode('utf-8')
+                    })
+        
+        if client and sender_email:
+            return cls._send_via_azure_with_attachment(client, sender_email, to_email, subject, 
+                                                        html_content, text_content, attachments)
+        else:
+            return cls._send_via_django_with_multiple_attachments(to_email, subject, html_content, text_content,
+                                                                   attachments_list)
+    
+    @classmethod
+    def _send_via_django_with_multiple_attachments(cls, to_email, subject, html_content, text_content,
+                                                    attachments_list):
+        """Fallback to Django's email system with multiple attachments"""
+        try:
+            from django.core.mail import EmailMultiAlternatives
+            
+            email = EmailMultiAlternatives(
+                subject=subject,
+                body=text_content,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[to_email]
+            )
+            email.attach_alternative(html_content, "text/html")
+            
+            if attachments_list:
+                for att in attachments_list:
+                    if att.get('data') and att.get('name'):
+                        email.attach(att['name'], att['data'], att.get('type', 'application/pdf'))
+            
+            email.send()
+            
+            logger.info(f"Django Email with {len(attachments_list or [])} attachments sent successfully to {to_email}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Django Email with multiple attachments failed to {to_email}: {e}")
+            return False
+
+    @classmethod
     def send_lab_report_with_pdf(cls, patient_email, patient_name, report_title, lab_name, 
                                   test_names, has_critical_values=False, critical_message=None,
                                   pdf_data=None, pdf_filename=None):
@@ -1952,7 +2024,125 @@ MedBuddy Team
             return cls.send_email(patient_email, subject, html_content, text_content)
 
     @classmethod
-    def send_patient_self_upload_confirmation(cls, patient_email, patient_name, report_title):
+    def send_lab_report_with_files(cls, patient_email, patient_name, report_title, lab_name, 
+                                    test_names, has_critical_values=False, critical_message=None,
+                                    files_data=None):
+        """
+        Send lab report ready notification with multiple file attachments
+        
+        Args:
+            files_data: list of dicts with keys: data (bytes), name (filename), type (MIME type)
+        """
+        subject = f"🔬 Your Lab Reports Are Ready: {report_title}"
+        
+        greeting = f"Dear {patient_name}," if patient_name else "Hello,"
+        
+        critical_box = ""
+        if has_critical_values:
+            critical_box = f"""
+            <div class="danger-box">
+                <strong>⚠️ Critical Values Detected</strong><br>
+                {critical_message or 'Some values in your report require immediate medical attention. Please consult your doctor.'}
+            </div>
+            """
+        
+        tests_list = "".join([f"<li>{test}</li>" for test in test_names]) if test_names else "<li>Complete Report</li>"
+        
+        # Build attachment note with file count
+        attachment_note = ""
+        file_count = len(files_data) if files_data else 0
+        if file_count > 0:
+            file_list = "".join([f"<li>{f.get('name', 'Report')}</li>" for f in files_data])
+            attachment_note = f"""
+            <div class="success-box">
+                <strong>📎 {file_count} File{'s' if file_count > 1 else ''} Attached</strong><br>
+                Your complete lab reports are attached to this email:
+                <ul style="margin: 10px 0 0 20px;">
+                    {file_list}
+                </ul>
+            </div>
+            """
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>{cls._get_base_styles()}</head>
+        <body>
+            <div class="container">
+                <div class="header header-purple">
+                    <div class="logo">🔬 Lab Reports Ready</div>
+                    <p>Your Results Are In</p>
+                </div>
+                <div class="content">
+                    <p>{greeting}</p>
+                    <p>Great news! Your lab reports are now ready to view.</p>
+                    
+                    <div class="info-box">
+                        <strong>📋 Report Details</strong><br>
+                        <div class="detail-row">
+                            <span class="detail-label">Report:</span>
+                            <span class="detail-value">{report_title}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Laboratory:</span>
+                            <span class="detail-value">{lab_name}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Date:</span>
+                            <span class="detail-value">{format_nyc_date()}</span>
+                        </div>
+                        <div class="detail-row">
+                            <span class="detail-label">Files:</span>
+                            <span class="detail-value">{file_count} report{'s' if file_count > 1 else ''}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="info-box">
+                        <strong>🧪 Tests Included:</strong>
+                        <ul style="margin: 10px 0; padding-left: 20px;">
+                            {tests_list}
+                        </ul>
+                    </div>
+                    
+                    {critical_box}
+                    {attachment_note}
+                    
+                    <center>
+                        <a href="{settings.FRONTEND_URL}/reports" class="btn btn-primary">View Full Reports</a>
+                    </center>
+                    
+                    <div class="warning-box">
+                        <strong>📌 Important:</strong> Keep these reports for your medical records. 
+                        If you have any questions about your results, please consult your healthcare provider.
+                    </div>
+                </div>
+                {cls._get_footer()}
+            </div>
+        </body>
+        </html>
+        """
+        
+        text_content = f"""
+{greeting}
+
+Your lab reports "{report_title}" from {lab_name} are now ready.
+{file_count} file(s) attached.
+
+{'⚠️ CRITICAL VALUES DETECTED - Please consult your doctor immediately.' if has_critical_values else ''}
+
+View your reports at: {settings.FRONTEND_URL}/reports
+
+Best regards,
+MedBuddy Team
+        """
+        
+        if files_data and len(files_data) > 0:
+            return cls.send_email_with_multiple_attachments(
+                patient_email, subject, html_content, text_content,
+                attachments_list=files_data
+            )
+        else:
+            return cls.send_email(patient_email, subject, html_content, text_content)
         """
         Send confirmation email when patient uploads their own lab report
         """
