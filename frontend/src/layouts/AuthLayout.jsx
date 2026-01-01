@@ -98,24 +98,24 @@ export default function AuthLayout({ children }) {
         <div className="absolute top-20 right-20 w-32 h-32 bg-white/5 rounded-full animate-float" />
         <div className="absolute top-1/2 right-10 w-20 h-20 bg-white/5 rounded-full" />
         
-        <div className="relative z-10 flex flex-col py-8 px-12 xl:px-16 w-full h-full overflow-hidden">
+        <div className="relative z-10 flex flex-col py-8 px-8 xl:px-12 w-full h-full">
           {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 flex-shrink-0 mb-6">
-            <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center">
-              <Heart className="w-7 h-7 text-white" />
+          <Link to="/" className="flex items-center gap-3 flex-shrink-0 mb-4">
+            <div className="w-11 h-11 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+              <Heart className="w-6 h-6 text-white" />
             </div>
             <span className="text-2xl font-display font-bold text-white">MedBuddy</span>
           </Link>
           
-          {/* Main Content - Scrollable if needed */}
-          <div className="flex-1 flex flex-col justify-center overflow-y-auto min-h-0 pr-2">
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col justify-center min-h-0">
             <h1 className="text-3xl xl:text-4xl font-display font-bold text-white leading-tight mb-3">
               Your Complete<br />
               Healthcare<br />
               Platform
             </h1>
             
-            <p className="text-base text-white/80 mb-6 max-w-md">
+            <p className="text-sm text-white/80 mb-5 max-w-md">
               AI-powered prescription management, lab analysis, multi-language support, and seamless healthcare coordination.
             </p>
             
