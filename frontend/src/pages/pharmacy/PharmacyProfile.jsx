@@ -400,7 +400,17 @@ export default function PharmacyProfile() {
               Verification Status
             </h2>
 
-            {pharmacy?.is_verified ? (
+            {user?.is_suspended ? (
+              <div className="p-4 bg-red-50 rounded-lg">
+                <div className="flex items-center gap-2 text-red-700">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="font-medium">Account Suspended</span>
+                </div>
+                <p className="text-sm text-red-600 mt-1">
+                  {user.suspension_reason || 'Please contact support for more information.'}
+                </p>
+              </div>
+            ) : pharmacy?.is_verified ? (
               <div className="p-4 bg-green-50 rounded-lg">
                 <div className="flex items-center gap-2 text-green-700">
                   <CheckCircle className="w-5 h-5" />

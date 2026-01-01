@@ -24,12 +24,12 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'role', 
             'phone', 'preferred_language', 'is_email_verified', 'is_professional_verified',
-            'is_fully_verified', 'can_send_to_patients', 'is_suspended',
+            'is_fully_verified', 'can_send_to_patients', 'is_suspended', 'suspension_reason',
             'is_rejected', 'rejection_reason',
             'receive_email_notifications', 'created_at'
         ]
         read_only_fields = ['id', 'is_email_verified', 'is_professional_verified', 
-                           'is_suspended', 'is_rejected', 'rejection_reason', 'created_at']
+                           'is_suspended', 'suspension_reason', 'is_rejected', 'rejection_reason', 'created_at']
 
 
 class UserPublicSerializer(serializers.ModelSerializer):
@@ -102,10 +102,7 @@ class LoginStep1Serializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid email or password')
         if not user.is_active:
             raise serializers.ValidationError('Account is disabled')
-        if user.is_suspended:
-            raise serializers.ValidationError(
-                f'Account is suspended. Reason: {user.suspension_reason or "Contact support"}'
-            )
+        # Allow suspended users to login - they will have limited access
         attrs['user'] = user
         return attrs
 
@@ -128,8 +125,7 @@ class QuickLoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid email or password')
         if not user.is_active:
             raise serializers.ValidationError('Account is disabled')
-        if user.is_suspended:
-            raise serializers.ValidationError('Account is suspended')
+        # Allow suspended users to login - they will have limited access
         attrs['user'] = user
         return attrs
 

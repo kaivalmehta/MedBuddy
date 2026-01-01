@@ -591,6 +591,12 @@ class ViewPatientHistoryView(views.APIView):
                 'report_date': r.report_date,
                 'laboratory_name': r.laboratory_name,
                 'status': r.status,
+                'file_url': r.file_url,
+                'analysis_summary': r.analysis_summary,
+                'abnormal_values': r.abnormal_values or [],
+                'recommendations': r.recommendations or [],
+                'has_critical_values': r.has_critical_values,
+                'notes': r.notes,
                 'created_at': r.created_at
             } for r in reports],
             'session_expires_at': access_token.session_expires_at
