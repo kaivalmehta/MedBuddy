@@ -132,10 +132,10 @@ export default function App() {
           user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <AuthLayout><Login /></AuthLayout>
         } />
         <Route path="/register" element={
-          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <Register />
+          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <AuthLayout><Register /></AuthLayout>
         } />
         <Route path="/forgot-password" element={
-          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <ForgotPassword />
+          user ? <Navigate to={getDefaultRoute(user.role)} replace /> : <AuthLayout><ForgotPassword /></AuthLayout>
         } />
         
         {/* Patient Routes */}

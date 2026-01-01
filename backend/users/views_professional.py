@@ -1390,6 +1390,8 @@ class LabSentReportsView(views.APIView):
     permission_classes = [IsAuthenticated, IsLaboratoryUser]
     
     def get(self, request):
+        from prescriptions.models import LabReportFile
+        
         # Get query params
         report_type = request.query_params.get('type')
         search = request.query_params.get('search', '').strip()
@@ -1416,20 +1418,29 @@ class LabSentReportsView(views.APIView):
         start = (page - 1) * per_page
         reports = reports.order_by('-created_at')[start:start + per_page]
         
-        reports_data = [{
-            'id': str(r.id),
-            'report_title': r.report_title,
-            'report_type': r.report_type,
-            'report_date': r.report_date.isoformat() if r.report_date else None,
-            'patient_email': r.user.email,
-            'patient_name': f"{r.user.first_name} {r.user.last_name}".strip() or r.user.email,
-            'file_url': r.file_url,
-            'status': r.status,
-            'analysis_summary': r.analysis_summary[:200] if r.analysis_summary else '',
-            'abnormal_values_count': len(r.abnormal_values or []),
-            'created_at': r.created_at.isoformat(),
-            'email_sent': r.email_sent,
-        } for r in reports]
+        reports_data = []
+        for r in reports:
+            # Count files for this report
+            files_count = LabReportFile.objects.filter(lab_report=r).count()
+            # If no LabReportFile entries but has file_url, count as 1
+            if files_count == 0 and r.file_url:
+                files_count = 1
+            
+            reports_data.append({
+                'id': str(r.id),
+                'report_title': r.report_title,
+                'report_type': r.report_type,
+                'report_date': r.report_date.isoformat() if r.report_date else None,
+                'patient_email': r.user.email,
+                'patient_name': f"{r.user.first_name} {r.user.last_name}".strip() or r.user.email,
+                'file_url': r.file_url,
+                'files_count': files_count,
+                'status': r.status,
+                'analysis_summary': r.analysis_summary[:200] if r.analysis_summary else '',
+                'abnormal_values_count': len(r.abnormal_values or []),
+                'created_at': r.created_at.isoformat(),
+                'email_sent': r.email_sent,
+            })
         
         return Response({
             'reports': reports_data,
@@ -1445,7 +1456,7 @@ class LabReportDetailView(views.APIView):
     permission_classes = [IsAuthenticated, IsLaboratoryUser]
     
     def get(self, request, report_id):
-        from prescriptions.models import CriticalValueAlert
+        from prescriptions.models import CriticalValueAlert, LabReportFile
         
         try:
             report = LabReport.objects.select_related('user').get(
@@ -1454,6 +1465,28 @@ class LabReportDetailView(views.APIView):
             )
         except LabReport.DoesNotExist:
             return Response({'error': 'Report not found'}, status=404)
+        
+        # Get all files for this report
+        report_files = LabReportFile.objects.filter(lab_report=report).order_by('created_at')
+        files_list = [{
+            'id': str(f.id),
+            'file_url': f.file_url,
+            'file_type': f.file_type,
+            'original_filename': f.original_filename,
+            'file_size': f.file_size,
+            'created_at': f.created_at.isoformat()
+        } for f in report_files]
+        
+        # If no files in LabReportFile, use the main file_url for backward compatibility
+        if not files_list and report.file_url:
+            files_list = [{
+                'id': str(report.id),
+                'file_url': report.file_url,
+                'file_type': report.file_type,
+                'original_filename': f"{report.report_title}.{report.file_type}",
+                'file_size': 0,
+                'created_at': report.created_at.isoformat()
+            }]
         
         # Get associated critical value alerts for full abnormal values data
         alerts = CriticalValueAlert.objects.filter(lab_report=report)
@@ -1523,6 +1556,8 @@ class LabReportDetailView(views.APIView):
             'referring_doctor': report.referring_doctor,
             'file_url': report.file_url,
             'file_type': report.file_type,
+            'files': files_list,  # All files for this report
+            'files_count': len(files_list),
             'status': report.status,
             'has_critical_values': report.has_critical_values,
             'analysis_summary': analysis_summary,

@@ -35,6 +35,8 @@ export default function PharmacyRxOrders() {
   const [submitting, setSubmitting] = useState(false)
   const [filter, setFilter] = useState('active')
   const [medAvailability, setMedAvailability] = useState({}) // {orderId: {medIdx: {available: bool, availableQty: num, note: string}}}
+  const [rejectModal, setRejectModal] = useState({ show: false, orderId: null, orderNumber: '' })
+  const [rejectReason, setRejectReason] = useState('')
   
   // Initialize medication availability when order is expanded
   const initMedAvailability = (order) => {
@@ -159,12 +161,26 @@ export default function PharmacyRxOrders() {
     }
   }
   
-  const rejectOrder = async (orderId) => {
-    if (!confirm('Are you sure you want to reject this order?')) return
+  const openRejectModal = (orderId, orderNumber) => {
+    setRejectModal({ show: true, orderId, orderNumber })
+    setRejectReason('')
+  }
+  
+  const closeRejectModal = () => {
+    setRejectModal({ show: false, orderId: null, orderNumber: '' })
+    setRejectReason('')
+  }
+  
+  const confirmRejectOrder = async () => {
+    if (!rejectModal.orderId) return
     
     setSubmitting(true)
     try {
-      await api.patch(`/pharmacy/rx-orders/${orderId}/status/`, { status: 'rejected' })
+      await api.patch(`/pharmacy/rx-orders/${rejectModal.orderId}/status/`, { 
+        status: 'rejected',
+        pharmacy_notes: rejectReason || 'Order rejected by pharmacy'
+      })
+      closeRejectModal()
       await loadOrders()
     } catch (err) {
       setError('Failed to reject order')
@@ -506,8 +522,30 @@ export default function PharmacyRxOrders() {
                               ${parseFloat(order.quoted_amount).toFixed(2)}
                             </span>
                           </div>
-                          {order.quote_details && (
-                            <p className="text-sm text-gray-600 mt-2">{order.quote_details}</p>
+                          {order.quote_details?.notes && (
+                            <p className="text-sm text-gray-600 mt-2">{order.quote_details.notes}</p>
+                          )}
+                          {/* Show medication availability summary */}
+                          {order.quote_details?.medications && order.quote_details.medications.length > 0 && (
+                            <div className="mt-3 space-y-1">
+                              <p className="text-xs font-medium text-gray-500 uppercase">Availability</p>
+                              {order.quote_details.medications.map((med, idx) => (
+                                <div key={idx} className={`text-sm px-2 py-1 rounded flex justify-between ${
+                                  !med.available 
+                                    ? 'bg-red-100 text-red-700'
+                                    : med.availableQty < med.requested
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-green-100 text-green-700'
+                                }`}>
+                                  <span>{med.name}</span>
+                                  <span>
+                                    {!med.available 
+                                      ? 'N/A' 
+                                      : `${med.availableQty}/${med.requested}`}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           )}
                         </div>
                       )}
@@ -576,7 +614,7 @@ export default function PharmacyRxOrders() {
                                   Provide Quote
                                 </button>
                                 <button
-                                  onClick={() => rejectOrder(order.id)}
+                                  onClick={() => openRejectModal(order.id, order.order_number)}
                                   disabled={submitting}
                                   className="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200"
                                 >
@@ -622,6 +660,75 @@ export default function PharmacyRxOrders() {
           ))}
         </div>
       )}
+      
+      {/* Reject Order Modal */}
+      <AnimatePresence>
+        {rejectModal.show && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={closeRejectModal}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+                  <XCircle className="w-6 h-6 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">Reject Order</h3>
+                  <p className="text-sm text-gray-500">Order #{rejectModal.orderNumber}</p>
+                </div>
+              </div>
+              
+              <p className="text-gray-600 mb-4">
+                Are you sure you want to reject this prescription order? The patient will be notified.
+              </p>
+              
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Reason for rejection (optional)
+                </label>
+                <textarea
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  rows={3}
+                  placeholder="e.g., Medication out of stock, Prescription expired, Unable to verify prescription..."
+                />
+              </div>
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={closeRejectModal}
+                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmRejectOrder}
+                  disabled={submitting}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <XCircle className="w-4 h-4" />
+                  )}
+                  Reject Order
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

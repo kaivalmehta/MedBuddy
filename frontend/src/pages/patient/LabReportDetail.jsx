@@ -6,13 +6,15 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { labReportService } from '../../services/professional'
 import { speechService } from '../../services/speech'
+import translationService from '../../services/translationService'
 import AudioPlayer, { ListenButton } from '../../components/AudioPlayer'
 import { 
   TestTube, ArrowLeft, Calendar, Building2, User, FileText,
   AlertTriangle, CheckCircle, Loader2, Download, Zap, Info,
-  AlertCircle, Activity, RefreshCw, Volume2
+  AlertCircle, Activity, RefreshCw, Volume2, Globe, Languages,
+  File, FileImage, ChevronDown, ChevronUp, Copy, Check
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function LabReportDetail() {
   const { id } = useParams()
@@ -20,6 +22,51 @@ export default function LabReportDetail() {
   const [loading, setLoading] = useState(true)
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState('')
+  
+  // Translation state
+  const [showTranslation, setShowTranslation] = useState(false)
+  const [translating, setTranslating] = useState(false)
+  const [selectedLanguage, setSelectedLanguage] = useState('es')
+  const [translatedContent, setTranslatedContent] = useState(null)
+  const [copied, setCopied] = useState(false)
+  
+  // Files display state
+  const [showAllFiles, setShowAllFiles] = useState(false)
+  
+  // Supported languages for translation
+  const languages = [
+    { code: 'es', name: 'Spanish', native: 'Español' },
+    { code: 'hi', name: 'Hindi', native: 'हिन्दी' },
+    { code: 'zh-Hans', name: 'Chinese (Simplified)', native: '简体中文' },
+    { code: 'ar', name: 'Arabic', native: 'العربية' },
+    { code: 'fr', name: 'French', native: 'Français' },
+    { code: 'de', name: 'German', native: 'Deutsch' },
+    { code: 'pt', name: 'Portuguese', native: 'Português' },
+    { code: 'ru', name: 'Russian', native: 'Русский' },
+    { code: 'ja', name: 'Japanese', native: '日本語' },
+    { code: 'ko', name: 'Korean', native: '한국어' },
+    { code: 'vi', name: 'Vietnamese', native: 'Tiếng Việt' },
+    { code: 'th', name: 'Thai', native: 'ไทย' },
+    { code: 'bn', name: 'Bengali', native: 'বাংলা' },
+    { code: 'ta', name: 'Tamil', native: 'தமிழ்' },
+    { code: 'te', name: 'Telugu', native: 'తెలుగు' },
+    { code: 'mr', name: 'Marathi', native: 'मराठी' },
+    { code: 'gu', name: 'Gujarati', native: 'ગુજરાતી' },
+    { code: 'kn', name: 'Kannada', native: 'ಕನ್ನಡ' },
+    { code: 'ml', name: 'Malayalam', native: 'മലയാളം' },
+    { code: 'pa', name: 'Punjabi', native: 'ਪੰਜਾਬੀ' },
+    { code: 'ur', name: 'Urdu', native: 'اردو' },
+    { code: 'it', name: 'Italian', native: 'Italiano' },
+    { code: 'nl', name: 'Dutch', native: 'Nederlands' },
+    { code: 'pl', name: 'Polish', native: 'Polski' },
+    { code: 'tr', name: 'Turkish', native: 'Türkçe' },
+    { code: 'uk', name: 'Ukrainian', native: 'Українська' },
+    { code: 'he', name: 'Hebrew', native: 'עברית' },
+    { code: 'id', name: 'Indonesian', native: 'Bahasa Indonesia' },
+    { code: 'ms', name: 'Malay', native: 'Bahasa Melayu' },
+    { code: 'fil', name: 'Filipino', native: 'Filipino' },
+    { code: 'sw', name: 'Swahili', native: 'Kiswahili' },
+  ]
 
   useEffect(() => {
     loadReport()
@@ -63,6 +110,57 @@ export default function LabReportDetail() {
     } finally {
       setAnalyzing(false)
     }
+  }
+
+  const handleTranslate = async () => {
+    if (!report) return
+    
+    setTranslating(true)
+    setError('')
+    
+    try {
+      const result = await translationService.translateLabReport(id, selectedLanguage)
+      
+      if (result.success) {
+        setTranslatedContent(result)
+        setShowTranslation(true)
+      } else {
+        setError(result.error || 'Translation failed')
+      }
+    } catch (err) {
+      console.error('Translation failed:', err)
+      setError('Translation failed. Please try again.')
+    } finally {
+      setTranslating(false)
+    }
+  }
+
+  const handleCopyTranslation = async () => {
+    if (!translatedContent) return
+    
+    const textToCopy = translatedContent.translated_report?.analysis_summary_translated || 
+                       translatedContent.translated_text || ''
+    
+    try {
+      await navigator.clipboard.writeText(textToCopy)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Copy failed:', err)
+    }
+  }
+
+  const getFileIcon = (fileType) => {
+    if (fileType === 'pdf') return <File className="w-5 h-5 text-red-500" />
+    if (['jpg', 'jpeg', 'png'].includes(fileType)) return <FileImage className="w-5 h-5 text-blue-500" />
+    return <FileText className="w-5 h-5 text-gray-500" />
+  }
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return 'Unknown size'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
   const getSeverityColor = (severity) => {
@@ -168,18 +266,82 @@ export default function LabReportDetail() {
               )}
             </div>
           </div>
-          {report.file_url && (
-            <a 
-              href={report.file_url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="btn-secondary flex items-center gap-2 flex-shrink-0"
-            >
-              <Download className="w-4 h-4" /> View File
-            </a>
-          )}
         </div>
       </motion.div>
+
+      {/* Report Files Section */}
+      {(report.files?.length > 0 || report.file_url) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-purple-600" />
+              <h2 className="text-lg font-semibold text-secondary-800">
+                Report Files ({report.files?.length || 1})
+              </h2>
+            </div>
+            {report.files?.length > 2 && (
+              <button
+                onClick={() => setShowAllFiles(!showAllFiles)}
+                className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
+              >
+                {showAllFiles ? (
+                  <>Show Less <ChevronUp className="w-4 h-4" /></>
+                ) : (
+                  <>Show All <ChevronDown className="w-4 h-4" /></>
+                )}
+              </button>
+            )}
+          </div>
+          
+          <div className="space-y-3">
+            {(report.files?.length > 0 ? report.files : [{
+              id: report.id,
+              file_url: report.file_url,
+              file_type: report.file_type,
+              original_filename: `${report.report_title}.${report.file_type}`,
+              file_size: 0
+            }])
+              .slice(0, showAllFiles ? undefined : 2)
+              .map((file, index) => (
+                <div 
+                  key={file.id || index}
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition"
+                >
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                    {getFileIcon(file.file_type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-secondary-800 truncate">
+                      {file.original_filename || `Report ${index + 1}`}
+                    </p>
+                    <p className="text-sm text-secondary-500">
+                      {file.file_type?.toUpperCase()} • {formatFileSize(file.file_size)}
+                    </p>
+                  </div>
+                  <a
+                    href={file.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary flex items-center gap-2 px-4 py-2"
+                    style={{background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'}}
+                  >
+                    <Download className="w-4 h-4" /> View
+                  </a>
+                </div>
+              ))}
+          </div>
+          
+          {report.files?.length > 2 && !showAllFiles && (
+            <p className="text-center text-secondary-500 text-sm mt-3">
+              +{report.files.length - 2} more file(s)
+            </p>
+          )}
+        </motion.div>
+      )}
 
       {/* Source & Status Info */}
       <div className="card">
@@ -231,6 +393,143 @@ export default function LabReportDetail() {
           loadingLabel="Generating audio..."
         />
       </div>
+
+      {/* Translation Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="card bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200"
+      >
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center">
+            <Languages className="w-5 h-5 text-emerald-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-secondary-800">Translate Report</h3>
+            <p className="text-sm text-secondary-500">Translate analysis to your preferred language</p>
+          </div>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row gap-3">
+          <select
+            value={selectedLanguage}
+            onChange={(e) => {
+              setSelectedLanguage(e.target.value)
+              setTranslatedContent(null)
+              setShowTranslation(false)
+            }}
+            className="input-field flex-1"
+          >
+            {languages.map(lang => (
+              <option key={lang.code} value={lang.code}>
+                {lang.native} - {lang.name}
+              </option>
+            ))}
+          </select>
+          
+          <button
+            onClick={handleTranslate}
+            disabled={translating}
+            className="btn-primary flex items-center justify-center gap-2 px-6"
+            style={{background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)'}}
+          >
+            {translating ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Translating...
+              </>
+            ) : (
+              <>
+                <Globe className="w-4 h-4" />
+                Translate
+              </>
+            )}
+          </button>
+        </div>
+        
+        {/* Translation Result */}
+        <AnimatePresence>
+          {showTranslation && translatedContent && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-4"
+            >
+              <div className="bg-white rounded-xl p-4 border border-emerald-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-emerald-700 flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    {languages.find(l => l.code === selectedLanguage)?.name} Translation
+                  </span>
+                  <button
+                    onClick={handleCopyTranslation}
+                    className="text-emerald-600 hover:text-emerald-700 p-2 hover:bg-emerald-50 rounded-lg transition"
+                    title="Copy translation"
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                
+                {/* Translated Analysis Summary */}
+                {translatedContent.translated_report?.analysis_summary_translated && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-secondary-700 mb-2">Analysis Summary</h4>
+                    <p className="text-secondary-600 leading-relaxed">
+                      {translatedContent.translated_report.analysis_summary_translated}
+                    </p>
+                  </div>
+                )}
+                
+                {/* Translated Abnormal Values */}
+                {translatedContent.translated_report?.abnormal_values_translated?.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-semibold text-secondary-700 mb-2">Abnormal Values</h4>
+                    <div className="space-y-2">
+                      {translatedContent.translated_report.abnormal_values_translated.map((item, idx) => (
+                        <div key={idx} className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+                          <div className="font-medium text-secondary-800">{item.test_name}</div>
+                          {item.meaning && (
+                            <p className="text-sm text-secondary-600 mt-1">{item.meaning}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Translated Recommendations */}
+                {translatedContent.translated_report?.recommendations_translated?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-secondary-700 mb-2">Recommendations</h4>
+                    <ul className="space-y-2">
+                      {translatedContent.translated_report.recommendations_translated.map((rec, idx) => (
+                        <li key={idx} className="flex items-start gap-2 text-secondary-600">
+                          <span className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xs flex-shrink-0 mt-0.5">
+                            {idx + 1}
+                          </span>
+                          {rec}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Fallback for simple text translation */}
+                {!translatedContent.translated_report && translatedContent.translated_text && (
+                  <p className="text-secondary-600 leading-relaxed whitespace-pre-wrap">
+                    {translatedContent.translated_text}
+                  </p>
+                )}
+              </div>
+              
+              <p className="text-xs text-secondary-400 mt-2 text-center">
+                Powered by Azure AI Translator • Medical terminology optimized
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Error Message */}
       {error && (

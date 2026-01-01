@@ -21,7 +21,7 @@ export default function LabUploadReport() {
   const [referringDoctor, setReferringDoctor] = useState('')
   const [notes, setNotes] = useState('')
   const [sendEmail, setSendEmail] = useState(true)
-  const [files, setFiles] = useState([]) // Changed to array for multiple files
+  const [files, setFiles] = useState([])  // Changed to array for multiple files
   const [testOrderId, setTestOrderId] = useState(searchParams.get('order') || '')
   
   // UI state
@@ -119,29 +119,29 @@ export default function LabUploadReport() {
 
   const handleFileChange = (e) => {
     const selectedFiles = Array.from(e.target.files)
-    const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
-    
-    const validFiles = []
-    for (const selectedFile of selectedFiles) {
-      if (!validTypes.includes(selectedFile.type)) {
-        setError('Please upload PDF or image files (JPG, PNG) only')
-        continue
+    if (selectedFiles.length > 0) {
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
+      const validFiles = []
+      
+      for (const file of selectedFiles) {
+        if (!validTypes.includes(file.type)) {
+          setError(`${file.name}: Invalid file type. Please upload PDF or image files (JPG, PNG)`)
+          return
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          setError(`${file.name}: File size must be less than 10MB`)
+          return
+        }
+        validFiles.push(file)
       }
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setError(`File ${selectedFile.name} is too large (max 10MB)`)
-        continue
-      }
-      validFiles.push(selectedFile)
-    }
-    
-    if (validFiles.length > 0) {
+      
       setFiles(prev => [...prev, ...validFiles])
       setError('')
     }
   }
-  
-  const removeFile = (index) => {
-    setFiles(prev => prev.filter((_, i) => i !== index))
+
+  const removeFile = (indexToRemove) => {
+    setFiles(prev => prev.filter((_, index) => index !== indexToRemove))
   }
 
   const handleSubmit = async (e) => {
@@ -170,27 +170,23 @@ export default function LabUploadReport() {
     const results = []
     
     try {
-      for (let i = 0; i < files.length; i++) {
-        setCurrentFileIndex(i)
-        const file = files[i]
-        
-        const formData = new FormData()
-        formData.append('patient_email', email.trim().toLowerCase())
-        formData.append('report_file', file)
-        // Add file number to title if multiple files
-        const fileTitle = files.length > 1 
-          ? `${reportTitle.trim()} (${i + 1}/${files.length})`
-          : reportTitle.trim()
-        formData.append('report_title', fileTitle)
-        formData.append('report_type', reportType)
-        formData.append('report_date', reportDate)
-        formData.append('referring_doctor', referringDoctor.trim())
-        formData.append('notes', notes.trim())
-        // Only send email on last file
-        formData.append('send_email', i === files.length - 1 ? sendEmail : false)
-        if (testOrderId) {
-          formData.append('test_order_id', testOrderId)
-        }
+      const formData = new FormData()
+      formData.append('patient_email', email.trim().toLowerCase())
+      
+      // Append multiple files with the same key
+      files.forEach((file) => {
+        formData.append('report_files', file)
+      })
+      
+      formData.append('report_title', reportTitle.trim())
+      formData.append('report_type', reportType)
+      formData.append('report_date', reportDate)
+      formData.append('referring_doctor', referringDoctor.trim())
+      formData.append('notes', notes.trim())
+      formData.append('send_email', sendEmail)
+      if (testOrderId) {
+        formData.append('test_order_id', testOrderId)
+      }
 
         // Progress for this file
         setUploadProgress(Math.round(((i) / files.length) * 100))
@@ -373,65 +369,39 @@ export default function LabUploadReport() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Report Files * <span className="text-gray-400 font-normal">(You can upload multiple files)</span>
+                    Report Files * <span className="text-gray-400 font-normal">(Upload multiple files for different tests)</span>
                   </label>
-                  
-                  {/* Already uploaded reports for this order */}
-                  {existingReports.length > 0 && (
-                    <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-xl">
-                      <p className="text-sm font-medium text-green-800 mb-2 flex items-center gap-2">
-                        <CheckCircle className="w-4 h-4" />
-                        Already uploaded for this order:
-                      </p>
-                      <ul className="space-y-1">
-                        {existingReports.map((report, idx) => (
-                          <li key={idx} className="text-sm text-green-700 flex items-center gap-2">
-                            <FileText className="w-4 h-4" />
-                            {report.report_title || `Report ${idx + 1}`}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition ${
                       files.length > 0 ? 'border-purple-300 bg-purple-50' : 'border-gray-300 hover:border-purple-400'
                     }`}
                   >
-                    <input 
-                      ref={fileInputRef} 
-                      type="file" 
-                      accept=".pdf,.jpg,.jpeg,.png" 
-                      onChange={handleFileChange} 
-                      className="hidden" 
-                      multiple 
-                    />
+                    <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} className="hidden" multiple />
                     <Upload className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                    <p className="text-gray-600">Click to upload files</p>
+                    <p className="text-gray-600">Click to add files</p>
                     <p className="text-sm text-gray-400">PDF, JPG, PNG (max 10MB each)</p>
                   </div>
                   
-                  {/* Selected files list */}
+                  {/* Display selected files */}
                   {files.length > 0 && (
                     <div className="mt-3 space-y-2">
                       <p className="text-sm font-medium text-gray-700">{files.length} file(s) selected:</p>
-                      {files.map((file, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-2 bg-purple-50 rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <FileText className="w-5 h-5 text-purple-600" />
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">{file.name}</p>
+                      {files.map((file, index) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <div className="flex items-center gap-3">
+                            <FileText className="w-6 h-6 text-purple-600" />
+                            <div className="text-left">
+                              <p className="font-medium text-gray-800 text-sm">{file.name}</p>
                               <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                             </div>
                           </div>
                           <button 
                             type="button" 
-                            onClick={(e) => { e.stopPropagation(); removeFile(idx); }} 
+                            onClick={(e) => { e.stopPropagation(); removeFile(index); }} 
                             className="p-1 hover:bg-purple-200 rounded-full"
                           >
-                            <X className="w-4 h-4 text-purple-600" />
+                            <X className="w-5 h-5 text-purple-600" />
                           </button>
                         </div>
                       ))}
@@ -469,7 +439,7 @@ export default function LabUploadReport() {
                   disabled={!patientExists || files.length === 0 || !reportTitle.trim()}
                   className="w-full py-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 flex items-center justify-center gap-2 font-medium"
                 >
-                  <Send className="w-5 h-5" /> Upload {files.length > 1 ? `${files.length} Reports` : '& Send Report'}
+                  <Send className="w-5 h-5" /> Upload & Send {files.length > 1 ? `${files.length} Reports` : 'Report'}
                 </button>
               </form>
             </motion.div>
@@ -479,14 +449,9 @@ export default function LabUploadReport() {
             <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
               <Loader2 className="w-16 h-16 text-purple-600 animate-spin mx-auto mb-6" />
               <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                Uploading {files.length > 1 ? `Reports (${currentFileIndex + 1}/${files.length})` : 'Report'}...
+                Uploading {files.length > 1 ? `${files.length} Reports` : 'Report'}...
               </h2>
-              <p className="text-gray-600 mb-2">Analyzing for critical values</p>
-              {files.length > 1 && (
-                <p className="text-sm text-gray-500 mb-4">
-                  Current: {files[currentFileIndex]?.name}
-                </p>
-              )}
+              <p className="text-gray-600 mb-6">Analyzing for critical values</p>
               <div className="max-w-xs mx-auto h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-purple-600 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
@@ -505,7 +470,26 @@ export default function LabUploadReport() {
                     ? 'Report Sent with Critical Values!' 
                     : 'Report Sent!'}
               </h2>
-              <p className="text-gray-600 mb-6">The report(s) have been sent to the patient.</p>
+              <p className="text-gray-600 mb-2">
+                {uploadResult?.files_uploaded > 1 
+                  ? `${uploadResult.files_uploaded} files have been uploaded and sent to the patient.`
+                  : 'The report has been sent to the patient.'}
+              </p>
+
+              {uploadResult?.files_uploaded > 1 && (
+                <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-4 text-left">
+                  <p className="font-semibold text-purple-800 mb-2">Files Uploaded:</p>
+                  <div className="space-y-1">
+                    {uploadResult.files?.map((file, idx) => (
+                      <div key={idx} className="flex items-center gap-2 text-sm text-purple-700">
+                        <FileText className="w-4 h-4" />
+                        <span>{file.filename}</span>
+                        <span className="text-purple-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Show uploaded files */}
               {uploadResults.length > 1 && (

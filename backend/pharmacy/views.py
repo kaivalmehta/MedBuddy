@@ -1403,7 +1403,20 @@ class PatientPrescriptionOrderCreateView(views.APIView):
             status='sent_to_pharmacy'
         )
         
-        # Send notification to pharmacy
+        # Build medication list HTML
+        medications = data['selected_medications']
+        med_list_html = "<ul style='list-style-type: disc; padding-left: 20px;'>"
+        for med in medications:
+            med_name = med.get('name', 'Unknown')
+            med_dosage = med.get('dosage', '')
+            med_qty = med.get('quantity', 1)
+            med_list_html += f"<li><strong>{med_name}</strong>"
+            if med_dosage:
+                med_list_html += f" - {med_dosage}"
+            med_list_html += f" (Qty: {med_qty})</li>"
+        med_list_html += "</ul>"
+        
+        # Send notification to pharmacy with full medication details
         try:
             from prescriptions.azure_email_service import AzureEmailService
             AzureEmailService.send_email(
@@ -1412,14 +1425,80 @@ class PatientPrescriptionOrderCreateView(views.APIView):
                 html_content=f"""
                 <h2>New Prescription Order</h2>
                 <p>You have received a new prescription order.</p>
-                <p><strong>Order Number:</strong> {order.order_number}</p>
-                <p><strong>Patient:</strong> {request.user.get_full_name() or request.user.email}</p>
-                <p><strong>Medications:</strong> {len(data['selected_medications'])} items</p>
-                <p>Please log in to MedBuddy to review and provide a quote.</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.get_full_name() or request.user.email}</td>
+                    </tr>
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Email:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.email}</td>
+                    </tr>
+                </table>
+                
+                <h3>Requested Medications ({len(medications)} items):</h3>
+                {med_list_html}
+                
+                {f'<h3>Patient Notes:</h3><p style="background: #fff3cd; padding: 10px; border-radius: 5px;">{data.get("patient_notes", "")}</p>' if data.get('patient_notes') else ''}
+                
+                <p style="margin-top: 20px;">Please log in to MedBuddy to review and provide a quote.</p>
                 """
             )
         except Exception as e:
             logger.error(f"Failed to notify pharmacy: {e}")
+        
+        # Send confirmation email to patient
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            AzureEmailService.send_email(
+                to_email=request.user.email,
+                subject=f"✅ Order Confirmed: {order.order_number}",
+                html_content=f"""
+                <h2>Your Prescription Order Has Been Submitted</h2>
+                <p>Thank you for your order! Here are your order details:</p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #e3f2fd;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                    </tr>
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Address:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.address}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">Sent to Pharmacy</td>
+                    </tr>
+                </table>
+                
+                <h3>Medications Ordered ({len(medications)} items):</h3>
+                {med_list_html}
+                
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h4 style="margin-top: 0; color: #2e7d32;">What's Next?</h4>
+                    <ol>
+                        <li>The pharmacy will review your prescription</li>
+                        <li>You'll receive a quote with pricing</li>
+                        <li>Accept or decline the quote</li>
+                        <li>Pick up your medications when ready</li>
+                    </ol>
+                </div>
+                
+                <p>You can track your order status in the MedBuddy app.</p>
+                <p>If you have any questions, please contact {pharmacy.name} at {pharmacy.phone}.</p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to send confirmation to patient: {e}")
         
         return Response({
             'message': 'Order created successfully',
@@ -1469,17 +1548,112 @@ class PatientPrescriptionOrderDetailView(views.APIView):
             order.accepted_at = timezone.now()
             order.save()
             
-            # Notify pharmacy
+            # Build medication list HTML
+            medications = order.selected_medications or []
+            med_list_html = ""
+            if medications:
+                med_list_html = "<h3>Medications to Prepare:</h3><ul style='list-style-type: disc; padding-left: 20px;'>"
+                for med in medications:
+                    if isinstance(med, dict):
+                        med_name = med.get('name', 'Unknown')
+                        med_dosage = med.get('dosage', '')
+                        med_qty = med.get('quantity', 1)
+                        med_list_html += f"<li><strong>{med_name}</strong>"
+                        if med_dosage:
+                            med_list_html += f" - {med_dosage}"
+                        med_list_html += f" (Qty: {med_qty})</li>"
+                med_list_html += "</ul>"
+            
+            # Notify pharmacy with full details
             try:
                 from prescriptions.azure_email_service import AzureEmailService
+                pharmacy = order.pharmacy
+                patient = request.user
+                
                 AzureEmailService.send_email(
-                    to_email=order.pharmacy.email,
+                    to_email=pharmacy.email,
                     subject=f"✅ Quote Accepted: Order {order.order_number}",
                     html_content=f"""
-                    <h2>Quote Accepted</h2>
-                    <p>The patient has accepted your quote for order {order.order_number}.</p>
-                    <p><strong>Amount:</strong> ${order.quoted_amount}</p>
-                    <p>Please prepare the order and mark it ready when complete.</p>
+                    <h2>🎉 Quote Accepted!</h2>
+                    <p>Great news! The patient has accepted your quote. Please prepare the order.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{patient.get_full_name() or patient.email}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient Email:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{patient.email}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Quoted Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Accepted At:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.accepted_at.strftime('%B %d, %Y at %I:%M %p')}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <h4 style="margin-top: 0;">⚡ Action Required</h4>
+                        <ol style="margin-bottom: 0;">
+                            <li>Log in to MedBuddy</li>
+                            <li>Click "Mark Preparing" to start</li>
+                            <li>Prepare the medications</li>
+                            <li>Click "Mark Ready" when done</li>
+                        </ol>
+                    </div>
+                    
+                    {f'<p><strong>Patient Notes:</strong> {order.patient_notes}</p>' if order.patient_notes else ''}
+                    """
+                )
+                
+                # Also notify patient of acceptance confirmation
+                AzureEmailService.send_email(
+                    to_email=patient.email,
+                    subject=f"✅ Order Confirmed: {order.order_number}",
+                    html_content=f"""
+                    <h2>Your Order is Confirmed!</h2>
+                    <p>You have accepted the quote from {pharmacy.name}. They will now prepare your prescription.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd; color: #4caf50;"><strong>Accepted - Awaiting Preparation</strong></td>
+                        </tr>
+                    </table>
+                    
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <h4 style="margin-top: 0; color: #2e7d32;">📍 Pickup Location</h4>
+                        <p style="font-size: 16px; margin: 5px 0;"><strong>{pharmacy.name}</strong></p>
+                        <p style="margin: 5px 0;">{pharmacy.address}</p>
+                        <p style="margin: 5px 0;">📞 {pharmacy.phone}</p>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+                        <p style="margin: 0;"><strong>What happens next?</strong></p>
+                        <p style="margin: 10px 0 0 0;">We'll email you when your order is ready for pickup!</p>
+                    </div>
                     """
                 )
             except Exception as e:
@@ -1493,6 +1667,25 @@ class PatientPrescriptionOrderDetailView(views.APIView):
         elif action == 'reject':
             order.status = 'cancelled'
             order.save()
+            
+            # Notify pharmacy of rejection
+            try:
+                from prescriptions.azure_email_service import AzureEmailService
+                AzureEmailService.send_email(
+                    to_email=order.pharmacy.email,
+                    subject=f"❌ Quote Declined: Order {order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Declined</h2>
+                    <p>The patient has declined your quote for order {order.order_number}.</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Patient:</strong> {request.user.email}</p>
+                    <p><strong>Quoted Amount:</strong> ${order.quoted_amount}</p>
+                    <p>No further action is required.</p>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify pharmacy: {e}")
+            
             return Response({
                 'message': 'Order cancelled',
                 'order': PrescriptionOrderSerializer(order).data
@@ -1569,20 +1762,70 @@ class PharmacyProvideQuoteView(views.APIView):
         order.quote_valid_until = timezone.now() + timedelta(hours=24)
         order.save()
         
-        # Notify patient
+        # Notify patient with detailed quote information
         try:
             from prescriptions.azure_email_service import AzureEmailService
+            
+            # Build medication availability HTML if available in quote_details
+            med_availability_html = ""
+            quote_details = data.get('quote_details', {})
+            if quote_details and quote_details.get('medications'):
+                med_availability_html = "<h3>Medication Availability:</h3><ul style='list-style-type: none; padding: 0;'>"
+                for med in quote_details['medications']:
+                    med_name = med.get('name', 'Unknown')
+                    requested = med.get('requested', 1)
+                    available = med.get('available', True)
+                    available_qty = med.get('availableQty', requested)
+                    note = med.get('note', '')
+                    
+                    if not available:
+                        status_color = "#dc3545"
+                        status_text = "❌ Not Available"
+                    elif available_qty < requested:
+                        status_color = "#ffc107"
+                        status_text = f"⚠️ Partial ({available_qty}/{requested} available)"
+                    else:
+                        status_color = "#28a745"
+                        status_text = "✅ In Stock"
+                    
+                    med_availability_html += f"""
+                    <li style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-left: 4px solid {status_color}; border-radius: 4px;">
+                        <strong>{med_name}</strong> - {status_text}
+                        {f'<br><em style="color: #666;">{note}</em>' if note else ''}
+                    </li>
+                    """
+                med_availability_html += "</ul>"
+            
             AzureEmailService.send_email(
                 to_email=order.patient.email,
                 subject=f"💰 Quote Ready: Order {order.order_number}",
                 html_content=f"""
                 <h2>Your Prescription Quote is Ready</h2>
                 <p>{request.user.pharmacy_profile.name} has provided a quote for your prescription order.</p>
-                <p><strong>Order Number:</strong> {order.order_number}</p>
-                <p><strong>Quoted Amount:</strong> ${order.quoted_amount}</p>
-                {f'<p><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
-                <p>Please log in to MedBuddy to accept or decline this quote.</p>
-                <p><em>This quote is valid for 24 hours.</em></p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #e3f2fd;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.pharmacy_profile.name}</td>
+                    </tr>
+                    <tr style="background: #c8e6c9;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Quoted Amount:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd; font-size: 18px;"><strong>${order.quoted_amount}</strong></td>
+                    </tr>
+                </table>
+                
+                {med_availability_html}
+                
+                {f'<div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>Pharmacy Notes:</strong><br>{order.pharmacy_notes}</div>' if order.pharmacy_notes else ''}
+                
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                    <p style="margin: 0; font-weight: bold;">Please log in to MedBuddy to accept or decline this quote.</p>
+                    <p style="margin: 10px 0 0 0; color: #666;"><em>This quote is valid for 24 hours.</em></p>
+                </div>
                 """
             )
         except Exception as e:
@@ -1599,6 +1842,13 @@ class PharmacyUpdateOrderStatusView(views.APIView):
     permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
     
     def post(self, request, order_id):
+        return self._update_status(request, order_id)
+    
+    def patch(self, request, order_id):
+        """Support PATCH method as alias to POST"""
+        return self._update_status(request, order_id)
+    
+    def _update_status(self, request, order_id):
         try:
             order = PrescriptionOrder.objects.get(
                 id=order_id,
@@ -1616,6 +1866,7 @@ class PharmacyUpdateOrderStatusView(views.APIView):
         
         # Validate status transitions
         valid_transitions = {
+            'sent_to_pharmacy': ['rejected', 'cancelled'],  # Can reject new orders
             'patient_accepted': ['preparing', 'cancelled'],
             'preparing': ['ready_for_pickup', 'cancelled'],
             'ready_for_pickup': ['completed'],
@@ -1627,6 +1878,7 @@ class PharmacyUpdateOrderStatusView(views.APIView):
                     'error': f'Cannot transition from {order.status} to {new_status}'
                 }, status=400)
         
+        old_status = order.status
         order.status = new_status
         if data.get('pharmacy_notes'):
             order.pharmacy_notes = data['pharmacy_notes']
@@ -1640,32 +1892,183 @@ class PharmacyUpdateOrderStatusView(views.APIView):
         
         order.save()
         
-        # Notify patient
-        status_messages = {
-            'preparing': ('⚙️ Order Being Prepared', 'Your prescription is being prepared.'),
-            'ready_for_pickup': ('✅ Ready for Pickup', 'Your prescription is ready! Visit the pharmacy to collect.'),
-            'completed': ('🎉 Order Complete', 'Your prescription order has been completed.'),
-            'cancelled': ('❌ Order Cancelled', 'Your prescription order has been cancelled.'),
-            'rejected': ('❌ Order Rejected', 'The pharmacy was unable to fulfill your order.'),
-        }
+        # Build medication list HTML for emails
+        medications = order.selected_medications or []
+        med_list_html = ""
+        if medications:
+            med_list_html = "<h3>Medications:</h3><ul style='list-style-type: disc; padding-left: 20px;'>"
+            for med in medications:
+                if isinstance(med, dict):
+                    med_name = med.get('name', 'Unknown')
+                    med_dosage = med.get('dosage', '')
+                    med_qty = med.get('quantity', 1)
+                    med_list_html += f"<li><strong>{med_name}</strong>"
+                    if med_dosage:
+                        med_list_html += f" - {med_dosage}"
+                    med_list_html += f" (Qty: {med_qty})</li>"
+            med_list_html += "</ul>"
         
-        if new_status in status_messages:
-            try:
-                from prescriptions.azure_email_service import AzureEmailService
-                subject, message = status_messages[new_status]
+        # Send detailed email notifications
+        pharmacy = request.user.pharmacy_profile
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            
+            if new_status == 'preparing':
+                # Email to patient: Order is being prepared
                 AzureEmailService.send_email(
                     to_email=order.patient.email,
-                    subject=f"{subject}: Order {order.order_number}",
+                    subject=f"⚙️ Order Being Prepared: {order.order_number}",
                     html_content=f"""
-                    <h2>{subject}</h2>
-                    <p>{message}</p>
-                    <p><strong>Order Number:</strong> {order.order_number}</p>
-                    <p><strong>Pharmacy:</strong> {request.user.pharmacy_profile.name}</p>
-                    {f'<p><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                    <h2>Your Order is Being Prepared</h2>
+                    <p>Great news! {pharmacy.name} has started preparing your prescription order.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #e3f2fd;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Address:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.address}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd; color: #9c27b0;"><strong>Preparing</strong></td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>📍 What's Next?</strong></p>
+                        <p style="margin: 10px 0 0 0;">We'll notify you when your order is ready for pickup at {pharmacy.name}.</p>
+                    </div>
+                    
+                    {f'<p><strong>Pharmacy Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
                     """
                 )
-            except Exception as e:
-                logger.error(f"Failed to notify patient: {e}")
+            
+            elif new_status == 'ready_for_pickup':
+                # Email to patient: Ready for pickup
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"✅ Ready for Pickup: {order.order_number}",
+                    html_content=f"""
+                    <h2>🎉 Your Prescription is Ready!</h2>
+                    <p>Your prescription order is ready for pickup at {pharmacy.name}.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4caf50;">
+                        <h3 style="margin-top: 0; color: #2e7d32;">📍 Pickup Location</h3>
+                        <p style="font-size: 16px; margin: 5px 0;"><strong>{pharmacy.name}</strong></p>
+                        <p style="margin: 5px 0;">{pharmacy.address}</p>
+                        <p style="margin: 5px 0;">📞 {pharmacy.phone}</p>
+                    </div>
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px;">
+                        <p style="margin: 0;"><strong>💡 Remember to bring:</strong></p>
+                        <ul style="margin: 10px 0 0 0;">
+                            <li>Your ID</li>
+                            <li>Order number: {order.order_number}</li>
+                            <li>Payment if not already processed</li>
+                        </ul>
+                    </div>
+                    
+                    {f'<p style="margin-top: 20px;"><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                    """
+                )
+            
+            elif new_status == 'completed':
+                # Email to patient: Order completed
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"🎉 Order Complete: {order.order_number}",
+                    html_content=f"""
+                    <h2>Thank You for Your Order!</h2>
+                    <p>Your prescription order has been completed.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Total Paid:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Completed:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.completed_at.strftime('%B %d, %Y at %I:%M %p') if order.completed_at else 'Just now'}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;">💊 <strong>Medication Reminder:</strong> Take your medications as prescribed by your doctor. If you have any questions about dosage or side effects, consult your pharmacist or healthcare provider.</p>
+                    </div>
+                    
+                    <p>Thank you for choosing {pharmacy.name}!</p>
+                    """
+                )
+            
+            elif new_status in ['cancelled', 'rejected']:
+                # Email to patient: Order cancelled/rejected
+                reason = "cancelled" if new_status == 'cancelled' else "rejected by the pharmacy"
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"❌ Order {new_status.title()}: {order.order_number}",
+                    html_content=f"""
+                    <h2>Order {new_status.title()}</h2>
+                    <p>We're sorry, but your prescription order has been {reason}.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    {f'<div style="background: #ffebee; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>Reason:</strong> {order.pharmacy_notes}</div>' if order.pharmacy_notes else ''}
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>What can you do?</strong></p>
+                        <ul style="margin: 10px 0 0 0;">
+                            <li>Try ordering from a different pharmacy</li>
+                            <li>Contact {pharmacy.name} for more information: {pharmacy.phone}</li>
+                            <li>Check medication availability before reordering</li>
+                        </ul>
+                    </div>
+                    """
+                )
+        except Exception as e:
+            logger.error(f"Failed to notify patient: {e}")
         
         return Response({
             'message': f'Order status updated to {new_status}',
@@ -1697,3 +2100,35 @@ class RegisteredPharmaciesView(generics.ListAPIView):
             data.append(pharmacy_data)
         
         return Response(data)
+
+class TestEmailView(views.APIView):
+    """Test email delivery - for debugging only"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from prescriptions.azure_email_service import AzureEmailService
+        
+        test_email = request.data.get('email', request.user.email)
+        
+        try:
+            result = AzureEmailService.send_email(
+                to_email=test_email,
+                subject="🧪 MedBuddy Test Email",
+                html_content=f"""
+                <h2>Test Email Successful!</h2>
+                <p>If you're reading this, email delivery is working.</p>
+                <p><strong>Sent at:</strong> {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <p><strong>To:</strong> {test_email}</p>
+                <p>Check your spam folder if you don't see MedBuddy emails in your inbox.</p>
+                """
+            )
+            return Response({
+                'success': True,
+                'message': f'Test email sent to {test_email}',
+                'check_spam': True
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=500)

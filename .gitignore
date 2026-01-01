@@ -251,3 +251,12 @@ coverage.xml
 # ####################################
 # .git/filter-repo/
 
+*.tar.xz
+*.tar.gz
+*.tar
+.gitignore.save
+__pycache__/
+*.pyc
+*.log
+.env
+frontend/.env

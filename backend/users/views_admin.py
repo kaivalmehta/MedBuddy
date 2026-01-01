@@ -126,7 +126,8 @@ class AdminUserListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated, IsAdminUser]
     
     def get_queryset(self):
-        queryset = User.objects.all().order_by('-created_at')
+        # Exclude superusers and admin users from the list
+        queryset = User.objects.exclude(is_superuser=True).exclude(role='admin').order_by('-created_at')
         
         # Apply filters
         role = self.request.query_params.get('role')

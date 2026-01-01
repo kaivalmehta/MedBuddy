@@ -8,7 +8,8 @@ import { laboratoryService } from '../../services/professional'
 import { 
   TestTube, ArrowLeft, Calendar, Building2, User, FileText,
   AlertTriangle, CheckCircle, Loader2, Download, Info,
-  AlertCircle, Activity, Mail, Clock
+  AlertCircle, Activity, Mail, Clock, File, FileImage,
+  ChevronDown, ChevronUp
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
@@ -17,6 +18,7 @@ export default function LabReportDetail() {
   const [report, setReport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [showAllFiles, setShowAllFiles] = useState(false)
 
   useEffect(() => {
     loadReport()
@@ -63,6 +65,19 @@ export default function LabReportDetail() {
       case 'mild': return 'Mild'
       default: return severity || 'Abnormal'
     }
+  }
+
+  const getFileIcon = (fileType) => {
+    if (fileType === 'pdf') return <File className="w-5 h-5 text-red-500" />
+    if (['jpg', 'jpeg', 'png'].includes(fileType)) return <FileImage className="w-5 h-5 text-blue-500" />
+    return <FileText className="w-5 h-5 text-gray-500" />
+  }
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return 'Unknown size'
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
   }
 
   if (loading) {
@@ -126,20 +141,89 @@ export default function LabReportDetail() {
                   <User className="w-4 h-4" /> Referred by: {report.referring_doctor}
                 </span>
               )}
+              {report.files_count > 0 && (
+                <span className="flex items-center gap-1 text-purple-600 font-medium">
+                  <FileText className="w-4 h-4" /> {report.files_count} file{report.files_count > 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
-          {report.file_url && (
-            <a 
-              href={report.file_url} 
-              target="_blank" 
-              rel="noopener noreferrer" 
-              className="btn-secondary flex items-center gap-2 flex-shrink-0"
-            >
-              <Download className="w-4 h-4" /> View File
-            </a>
-          )}
         </div>
       </motion.div>
+
+      {/* Report Files Section */}
+      {(report.files?.length > 0 || report.file_url) && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="card"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-purple-600" />
+              <h2 className="text-lg font-semibold text-secondary-800">
+                Report Files ({report.files?.length || 1})
+              </h2>
+            </div>
+            {report.files?.length > 2 && (
+              <button
+                onClick={() => setShowAllFiles(!showAllFiles)}
+                className="text-purple-600 hover:text-purple-700 text-sm font-medium flex items-center gap-1"
+              >
+                {showAllFiles ? (
+                  <>Show Less <ChevronUp className="w-4 h-4" /></>
+                ) : (
+                  <>Show All <ChevronDown className="w-4 h-4" /></>
+                )}
+              </button>
+            )}
+          </div>
+          
+          <div className="space-y-3">
+            {(report.files?.length > 0 ? report.files : [{
+              id: report.id,
+              file_url: report.file_url,
+              file_type: report.file_type,
+              original_filename: `${report.report_title}.${report.file_type}`,
+              file_size: 0
+            }])
+              .slice(0, showAllFiles ? undefined : 2)
+              .map((file, index) => (
+                <div 
+                  key={file.id || index}
+                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition"
+                >
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                    {getFileIcon(file.file_type)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-secondary-800 truncate">
+                      {file.original_filename || `Report ${index + 1}`}
+                    </p>
+                    <p className="text-sm text-secondary-500">
+                      {file.file_type?.toUpperCase()} • {formatFileSize(file.file_size)}
+                    </p>
+                  </div>
+                  <a
+                    href={file.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-primary flex items-center gap-2 px-4 py-2"
+                    style={{background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)'}}
+                  >
+                    <Download className="w-4 h-4" /> View
+                  </a>
+                </div>
+              ))}
+          </div>
+          
+          {report.files?.length > 2 && !showAllFiles && (
+            <p className="text-center text-secondary-500 text-sm mt-3">
+              +{report.files.length - 2} more file(s)
+            </p>
+          )}
+        </motion.div>
+      )}
 
       {/* Patient Info */}
       <div className="card">

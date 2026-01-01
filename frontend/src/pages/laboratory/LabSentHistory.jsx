@@ -224,11 +224,18 @@ export default function LabSentHistory() {
                         </div>
                         <div>
                           <p className="font-medium text-gray-800">{report.report_title}</p>
-                          {report.abnormal_values_count > 0 && (
-                            <span className="text-xs text-amber-600">
-                              {report.abnormal_values_count} abnormal value{report.abnormal_values_count > 1 ? 's' : ''}
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {report.files_count > 1 && (
+                              <span className="text-xs text-purple-600 font-medium">
+                                {report.files_count} files
+                              </span>
+                            )}
+                            {report.abnormal_values_count > 0 && (
+                              <span className="text-xs text-amber-600">
+                                {report.abnormal_values_count} abnormal value{report.abnormal_values_count > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -273,7 +280,18 @@ export default function LabSentHistory() {
                         >
                           <ArrowUpRight className="w-4 h-4" />
                         </Link>
-                        {report.file_url && (
+                        {report.files_count > 1 ? (
+                          <Link
+                            to={`/laboratory/report/${report.id}`}
+                            className="p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition relative"
+                            title={`View all ${report.files_count} files`}
+                          >
+                            <Download className="w-4 h-4" />
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 text-white text-xs rounded-full flex items-center justify-center">
+                              {report.files_count}
+                            </span>
+                          </Link>
+                        ) : report.file_url && (
                           <a
                             href={report.file_url}
                             target="_blank"

@@ -72,4 +72,7 @@ urlpatterns = [
     path('rx-orders/<uuid:order_id>/', views.PharmacyPrescriptionOrderDetailView.as_view(), name='pharmacy_rx_order_detail'),
     path('rx-orders/<uuid:order_id>/quote/', views.PharmacyProvideQuoteView.as_view(), name='pharmacy_provide_quote'),
     path('rx-orders/<uuid:order_id>/status/', views.PharmacyUpdateOrderStatusView.as_view(), name='pharmacy_update_rx_status'),
+    
+    # Test endpoint
+    path('test-email/', views.TestEmailView.as_view(), name='test_email'),
 ]

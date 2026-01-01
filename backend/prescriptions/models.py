@@ -429,6 +429,32 @@ class LabReport(models.Model):
         return False
 
 
+class LabReportFile(models.Model):
+    """Multiple files for a single lab report"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lab_report = models.ForeignKey(LabReport, on_delete=models.CASCADE, related_name='files')
+    
+    # File details
+    file_url = models.URLField(max_length=500)
+    file_type = models.CharField(max_length=10, default='pdf')
+    blob_name = models.CharField(max_length=255)
+    original_filename = models.CharField(max_length=255, blank=True)
+    file_size = models.IntegerField(default=0)  # Size in bytes
+    
+    # OCR results for this specific file
+    ocr_raw_text = models.TextField(blank=True)
+    ocr_confidence = models.FloatField(null=True, blank=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'lab_report_files'
+        ordering = ['created_at']
+    
+    def __str__(self):
+        return f"{self.original_filename} - {self.lab_report.report_title}"
+
+
 # ============================================
 # TEST CATALOG - Lab's available tests
 # ============================================

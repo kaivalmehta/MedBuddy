@@ -5,12 +5,29 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 })
 
+// Custom event for auth expiration - components can listen for this
+export const AUTH_EXPIRED_EVENT = 'auth:expired'
+
+// Function to dispatch auth expired event
+const dispatchAuthExpired = () => {
+  console.log('[API] Dispatching auth expired event')
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT))
+}
+
+// Function to clear auth data
+const clearAuthData = () => {
+  console.log('[API] Clearing auth data from localStorage')
+  localStorage.removeItem('accessToken')
+  localStorage.removeItem('refreshToken')
+  localStorage.removeItem('user')
+  delete api.defaults.headers.common['Authorization']
+}
+
 // Request interceptor - always read fresh token from localStorage
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('accessToken')
     console.log('[API Request]', config.method?.toUpperCase(), config.url)
-    console.log('[API Request] Token from localStorage:', token ? token.substring(0, 50) + '...' : 'NULL')
     
     if (token) {
       // Make sure headers object exists
@@ -18,9 +35,6 @@ api.interceptors.request.use(
         config.headers = {}
       }
       config.headers.Authorization = `Bearer ${token}`
-      console.log('[API Request] Authorization header set')
-    } else {
-      console.warn('[API Request] No token available!')
     }
     return config
   },
@@ -30,25 +44,28 @@ api.interceptors.request.use(
   }
 )
 
-// Response interceptor for token refresh - NO AUTO REDIRECT
+// Response interceptor for token refresh and auto-logout on expiration
 api.interceptors.response.use(
   (response) => {
-    console.log('[API Response]', response.status, response.config.url)
     return response
   },
   async (error) => {
     const originalRequest = error.config
-    console.error('[API Error]', error.response?.status, originalRequest?.url)
+    const status = error.response?.status
+    const url = originalRequest?.url
+    
+    console.error('[API Error]', status, url, error.response?.data?.detail || '')
     
     // Skip token refresh logic for auth endpoints
     const authEndpoints = ['/auth/login', '/auth/register', '/auth/password', '/auth/token']
-    const isAuthEndpoint = authEndpoints.some(ep => originalRequest?.url?.includes(ep))
+    const isAuthEndpoint = authEndpoints.some(ep => url?.includes(ep))
     
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+    // Handle 401 Unauthorized
+    if (status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       originalRequest._retry = true
       
       const refreshToken = localStorage.getItem('refreshToken')
-      console.log('[API] Attempting refresh, token exists:', !!refreshToken)
+      console.log('[API] Token expired, attempting refresh...')
       
       if (refreshToken) {
         try {
@@ -59,16 +76,34 @@ api.interceptors.response.use(
           )
           
           const { access } = response.data
-          console.log('[API] Refresh successful, new token:', access.substring(0, 50) + '...')
+          console.log('[API] Token refresh successful')
           localStorage.setItem('accessToken', access)
+          api.defaults.headers.common['Authorization'] = `Bearer ${access}`
           originalRequest.headers.Authorization = `Bearer ${access}`
           
           return api(originalRequest)
         } catch (refreshError) {
-          console.error('[API] Refresh failed:', refreshError.response?.status, refreshError.response?.data)
+          console.error('[API] Token refresh failed:', refreshError.response?.status)
+          
+          // Refresh token is also expired or invalid - clear auth and redirect
+          clearAuthData()
+          dispatchAuthExpired()
+          
           return Promise.reject(refreshError)
         }
+      } else {
+        // No refresh token available - clear auth and redirect
+        console.log('[API] No refresh token available')
+        clearAuthData()
+        dispatchAuthExpired()
       }
+    }
+    
+    // Handle 403 Forbidden (sometimes used for expired tokens)
+    if (status === 403 && error.response?.data?.code === 'token_not_valid') {
+      console.log('[API] Received token_not_valid error')
+      clearAuthData()
+      dispatchAuthExpired()
     }
     
     return Promise.reject(error)

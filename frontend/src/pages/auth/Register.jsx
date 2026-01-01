@@ -88,7 +88,7 @@ export default function Register() {
   }, [role])
 
   const roles = [
-    { value: 'patient', label: 'Patient', icon: User, desc: 'Manage your prescriptions', color: 'bg-blue-500' },
+    { value: 'patient', label: 'Patient', icon: User, desc: 'Manage your prescriptions', color: 'bg-primary-500' },
     { value: 'doctor', label: 'Doctor', icon: Stethoscope, desc: 'Create prescriptions', color: 'bg-emerald-500' },
     { value: 'pharmacy', label: 'Pharmacy', icon: Pill, desc: 'Fulfill prescriptions', color: 'bg-purple-500' },
     { value: 'laboratory', label: 'Laboratory', icon: FlaskConical, desc: 'Upload lab reports', color: 'bg-amber-500' },
@@ -334,14 +334,14 @@ export default function Register() {
         </h3>
 
         {/* Location Capture Section */}
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div className="p-4 bg-primary-50 rounded-lg border border-primary-200">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <MapPin className="w-5 h-5 text-blue-600" />
-              <span className="text-sm font-medium text-blue-900">Your Location</span>
+              <MapPin className="w-5 h-5 text-primary-600" />
+              <span className="text-sm font-medium text-primary-900">Your Location</span>
             </div>
             {locationLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+              <Loader2 className="w-5 h-5 animate-spin text-primary-600" />
             ) : location ? (
               <span className="text-sm text-green-600 flex items-center gap-1">
                 <CheckCircle className="w-4 h-4" />
@@ -351,7 +351,7 @@ export default function Register() {
               <button
                 type="button"
                 onClick={getLocation}
-                className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                className="text-sm text-primary-600 hover:text-primary-800 flex items-center gap-1"
               >
                 <Navigation className="w-4 h-4" />
                 Enable Location
@@ -384,7 +384,7 @@ export default function Register() {
                 <input
                   type="text"
                   {...register('specialization', { required: role === 'doctor' ? 'Required' : false })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                   placeholder="e.g., Cardiology"
                 />
                 {errors.specialization && <p className="mt-1 text-xs text-red-500">{errors.specialization.message}</p>}
@@ -394,7 +394,7 @@ export default function Register() {
                 <input
                   type="text"
                   {...register('qualification', { required: role === 'doctor' ? 'Required' : false })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                   placeholder="e.g., MBBS, MD"
                 />
                 {errors.qualification && <p className="mt-1 text-xs text-red-500">{errors.qualification.message}</p>}
@@ -405,7 +405,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('license_number', { required: role === 'doctor' ? 'Required' : false })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder="Your medical registration number"
               />
               {errors.license_number && <p className="mt-1 text-xs text-red-500">{errors.license_number.message}</p>}
@@ -415,7 +415,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('clinic_name')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder="Your clinic or hospital name"
               />
             </div>
@@ -424,7 +424,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('address')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder="Full address"
               />
             </div>
@@ -441,7 +441,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('business_name', { required: 'Required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder={role === 'pharmacy' ? 'Your pharmacy name' : 'Your laboratory name'}
               />
               {errors.business_name && <p className="mt-1 text-xs text-red-500">{errors.business_name.message}</p>}
@@ -451,7 +451,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('license_number', { required: 'Required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder="Business license number"
               />
               {errors.license_number && <p className="mt-1 text-xs text-red-500">{errors.license_number.message}</p>}
@@ -461,7 +461,7 @@ export default function Register() {
               <input
                 type="text"
                 {...register('address', { required: 'Required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                 placeholder="Street address"
               />
               {errors.address && <p className="mt-1 text-xs text-red-500">{errors.address.message}</p>}
@@ -472,7 +472,7 @@ export default function Register() {
                 <input
                   type="text"
                   {...register('city', { required: 'Required' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                   placeholder="City"
                 />
               </div>
@@ -481,7 +481,7 @@ export default function Register() {
                 <input
                   type="text"
                   {...register('state', { required: 'Required' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                   placeholder="State"
                 />
               </div>
@@ -490,7 +490,7 @@ export default function Register() {
                 <input
                   type="text"
                   {...register('zip_code', { required: 'Required' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                   placeholder="ZIP"
                 />
               </div>
@@ -509,7 +509,7 @@ export default function Register() {
             className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
               verificationFile 
                 ? 'border-green-300 bg-green-50' 
-                : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+                : 'border-gray-300 hover:border-primary-400 hover:bg-primary-50'
             }`}
           >
             <input
@@ -541,18 +541,21 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg">
-        <AnimatePresence mode="wait">
-          {step === 'details' && (
-            <motion.div
-              key="details"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-            >
-              <h2 className="text-3xl font-bold text-gray-800 mb-2">Create account</h2>
-              <p className="text-gray-600 mb-6">Start managing prescriptions safely</p>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="w-full"
+    >
+      <AnimatePresence mode="wait">
+        {step === 'details' && (
+          <motion.div
+            key="details"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+          >
+            <h2 className="text-3xl font-bold text-gray-800 mb-2">Create account</h2>
+            <p className="text-gray-600 mb-6">Start managing prescriptions safely</p>
 
               {error && (
                 <motion.div
@@ -580,7 +583,7 @@ export default function Register() {
                         }}
                         className={`p-3 rounded-xl border-2 text-left transition-all ${
                           role === r.value 
-                            ? 'border-blue-500 bg-blue-50 shadow-sm' 
+                            ? 'border-primary-500 bg-primary-50 shadow-sm' 
                             : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                         }`}
                       >
@@ -589,7 +592,7 @@ export default function Register() {
                             <r.icon className="w-4 h-4 text-white" />
                           </div>
                           <div>
-                            <p className={`font-medium text-sm ${role === r.value ? 'text-blue-700' : 'text-gray-700'}`}>
+                            <p className={`font-medium text-sm ${role === r.value ? 'text-primary-700' : 'text-gray-700'}`}>
                               {r.label}
                             </p>
                             <p className="text-xs text-gray-500">{r.desc}</p>
@@ -609,7 +612,7 @@ export default function Register() {
                       <input
                         type="text"
                         {...register('first_name')}
-                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                         placeholder="John"
                       />
                     </div>
@@ -619,7 +622,7 @@ export default function Register() {
                     <input
                       type="text"
                       {...register('last_name')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                       placeholder="Doe"
                     />
                   </div>
@@ -636,7 +639,7 @@ export default function Register() {
                         required: 'Email is required',
                         pattern: { value: /^\S+@\S+$/i, message: 'Invalid email' }
                       })}
-                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                       placeholder="you@example.com"
                     />
                   </div>
@@ -651,7 +654,7 @@ export default function Register() {
                     <input
                       type="tel"
                       {...register('phone', { required: role !== 'patient' ? 'Phone required for professionals' : false })}
-                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                       placeholder="+1 234 567 8900"
                     />
                   </div>
@@ -670,7 +673,7 @@ export default function Register() {
                           required: 'Password is required',
                           minLength: { value: 8, message: 'Min 8 characters' }
                         })}
-                        className="w-full pl-9 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        className="w-full pl-9 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                         placeholder="••••••••"
                       />
                       <button
@@ -693,7 +696,7 @@ export default function Register() {
                           required: 'Confirm password',
                           validate: v => v === password || 'Passwords must match'
                         })}
-                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-sm"
                         placeholder="••••••••"
                       />
                     </div>
@@ -719,7 +722,7 @@ export default function Register() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
+                  className="w-full btn-primary py-3 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                 >
                   {loading ? (
                     <>
@@ -734,7 +737,7 @@ export default function Register() {
 
               <p className="mt-6 text-center text-gray-600 text-sm">
                 Already have an account?{' '}
-                <Link to="/login" className="text-blue-600 hover:text-blue-700 font-semibold">
+                <Link to="/login" className="text-primary-600 hover:text-primary-700 font-semibold">
                   Sign in
                 </Link>
               </p>
@@ -757,8 +760,8 @@ export default function Register() {
               </button>
 
               <div className="text-center mb-8">
-                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Shield className="w-8 h-8 text-blue-600" />
+                <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Shield className="w-8 h-8 text-primary-600" />
                 </div>
                 <h2 className="text-2xl font-bold text-gray-800">
                   Verify your email
@@ -792,7 +795,7 @@ export default function Register() {
                     onChange={(e) => handleOtpChange(index, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(index, e)}
                     onPaste={handleOtpPaste}
-                    className="w-12 h-14 text-center text-xl font-semibold border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                    className="w-12 h-14 text-center text-xl font-semibold border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all"
                     disabled={loading}
                   />
                 ))}
@@ -801,7 +804,7 @@ export default function Register() {
               <button
                 onClick={() => handleOtpSubmit(otpValues.join(''))}
                 disabled={loading || otpValues.some(v => !v)}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2 mb-4"
+                className="w-full btn-primary py-3 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2 mb-4"
               >
                 {loading ? (
                   <>
@@ -823,7 +826,7 @@ export default function Register() {
                   <button
                     onClick={handleResendOTP}
                     disabled={loading}
-                    className="text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-primary-600 hover:text-primary-700 font-medium"
                   >
                     Resend code
                   </button>
@@ -851,11 +854,10 @@ export default function Register() {
                   : 'Welcome to MedBuddy. Redirecting you to your dashboard...'
                 }
               </p>
-              <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mt-4" />
+              <Loader2 className="w-6 h-6 animate-spin text-primary-600 mx-auto mt-4" />
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </div>
+      </motion.div>
   )
 }
