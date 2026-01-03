@@ -26,7 +26,7 @@ const patientNav = [
   { path: '/lab-orders', icon: ClipboardList, label: 'My Lab Orders' },
   { path: '/alerts', icon: ShieldAlert, label: 'Health Alerts', highlight: true },
   { path: '/reminders', icon: Clock, label: 'Reminders' },
-  { path: '/orders', icon: ShoppingBag, label: 'Pharmacy Orders' },
+//  { path: '/orders', icon: ShoppingBag, label: 'Pharmacy Orders' },
   { path: '/translate', icon: Globe, label: 'Translate', highlight: true },
   { divider: true },
   { path: '/health-profile', icon: User, label: 'Health Profile' },

@@ -28270,3 +28270,903 @@ Traceback (most recent call last):
 AttributeError: 'Prescription' object has no attribute 'safety_score'. Did you mean: 'safety_report'?
 INFO 2026-01-01 18:42:16,608 autoreload 70399 4648052224 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/views.py changed, reloading.
 INFO 2026-01-01 18:42:18,749 autoreload 70476 4704941568 Watching for file changes with StatReloader
+INFO 2026-01-02 12:26:12,693 autoreload 4179 4573623808 Watching for file changes with StatReloader
+WARNING 2026-01-02 12:26:50,108 log 4179 123145461231616 Not Found: /
+WARNING 2026-01-02 12:26:50,428 log 4179 123145461231616 Not Found: /favicon.ico
+INFO 2026-01-02 12:27:19,948 azure_email_service 4179 123145511600128 📧 Email sent - To: kashishkhatri003@gmail.com, Subject: 🔑 MedBuddy - Login Verification Code
+INFO 2026-01-02 12:27:20,062 azure_email_service 4179 123145511600128 Azure Email client initialized successfully
+INFO 2026-01-02 12:27:20,066 _universal 4179 123145511600128 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '5335'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '4ac68ec6-e800-11f0-8da6-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 12:27:20,816 _universal 4179 123145511600128 Response status: 202
+Response headers:
+    'Date': 'Fri, 02 Jan 2026 17:27:20 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 12:27:20,820 _universal 4179 123145595547648 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/2db1ffb3-a847-46c5-8d66-a9c05bd332b4?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4ac68ec6-e800-11f0-8da6-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 12:27:21,013 _universal 4179 123145595547648 Response status: 200
+Response headers:
+    'Date': 'Fri, 02 Jan 2026 17:27:21 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 12:27:24,016 _universal 4179 123145595547648 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/2db1ffb3-a847-46c5-8d66-a9c05bd332b4?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4ac68ec6-e800-11f0-8da6-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 12:27:24,162 _universal 4179 123145595547648 Response status: 200
+Response headers:
+    'Date': 'Fri, 02 Jan 2026 17:27:24 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 12:27:27,166 _universal 4179 123145595547648 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/2db1ffb3-a847-46c5-8d66-a9c05bd332b4?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4ac68ec6-e800-11f0-8da6-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 12:27:27,308 _universal 4179 123145595547648 Response status: 200
+Response headers:
+    'Date': 'Fri, 02 Jan 2026 17:27:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 12:27:27,312 azure_email_service 4179 123145511600128 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: 2db1ffb3-a847-46c5-8d66-a9c05bd332b4
+INFO 2026-01-02 19:03:14,517 autoreload 4179 4573623808 /Users/kashishkhatri/Desktop/medbuddy/backend/analytics/views.py changed, reloading.
+INFO 2026-01-02 19:03:16,050 autoreload 25267 4749551104 Watching for file changes with StatReloader
+INFO 2026-01-02 19:04:15,950 autoreload 25267 4749551104 /Users/kashishkhatri/Desktop/medbuddy/backend/medbuddy_api/settings.py changed, reloading.
+INFO 2026-01-02 19:04:19,094 autoreload 25507 4501059072 Watching for file changes with StatReloader
+INFO 2026-01-02 19:04:27,179 autoreload 25507 4501059072 /Users/kashishkhatri/Desktop/medbuddy/backend/medbuddy_api/urls.py changed, reloading.
+INFO 2026-01-02 19:04:29,002 autoreload 25554 4789319168 Watching for file changes with StatReloader
+INFO 2026-01-02 19:04:47,486 autoreload 25554 4789319168 /Users/kashishkhatri/Desktop/medbuddy/backend/pharmacy/admin.py changed, reloading.
+INFO 2026-01-02 19:04:48,601 autoreload 25631 4458505728 Watching for file changes with StatReloader
+INFO 2026-01-02 19:04:54,448 autoreload 25631 4458505728 /Users/kashishkhatri/Desktop/medbuddy/backend/pharmacy/apps.py changed, reloading.
+INFO 2026-01-02 19:04:55,752 autoreload 25672 4544497152 Watching for file changes with StatReloader
+INFO 2026-01-02 19:05:01,056 autoreload 25672 4544497152 /Users/kashishkhatri/Desktop/medbuddy/backend/pharmacy/models.py changed, reloading.
+INFO 2026-01-02 19:05:02,788 autoreload 25698 4538672640 Watching for file changes with StatReloader
+INFO 2026-01-02 19:05:07,380 autoreload 25698 4538672640 /Users/kashishkhatri/Desktop/medbuddy/backend/pharmacy/serializers.py changed, reloading.
+INFO 2026-01-02 19:05:08,905 autoreload 25725 4397692416 Watching for file changes with StatReloader
+INFO 2026-01-02 19:05:14,386 autoreload 25725 4397692416 /Users/kashishkhatri/Desktop/medbuddy/backend/pharmacy/urls.py changed, reloading.
+INFO 2026-01-02 19:05:16,909 autoreload 25756 4548335104 Watching for file changes with StatReloader
+INFO 2026-01-02 19:05:44,023 autoreload 25756 4548335104 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/admin.py changed, reloading.
+INFO 2026-01-02 19:05:46,042 autoreload 25873 4759594496 Watching for file changes with StatReloader
+INFO 2026-01-02 19:05:50,163 autoreload 25873 4759594496 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/apps.py changed, reloading.
+INFO 2026-01-02 19:05:51,044 autoreload 25906 4792321536 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:04,875 autoreload 25906 4792321536 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/azure_email_service.py changed, reloading.
+INFO 2026-01-02 19:06:06,614 autoreload 25964 4569142784 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:12,102 autoreload 25964 4569142784 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/azure_translator_service.py changed, reloading.
+INFO 2026-01-02 19:06:13,940 autoreload 25997 4480468480 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:18,641 autoreload 25997 4480468480 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/email_service.py changed, reloading.
+INFO 2026-01-02 19:06:19,836 autoreload 26027 4626068992 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:32,643 autoreload 26027 4626068992 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/models.py changed, reloading.
+INFO 2026-01-02 19:06:34,589 autoreload 26088 4616668672 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:39,192 autoreload 26088 4616668672 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/report_urls.py changed, reloading.
+INFO 2026-01-02 19:06:40,300 autoreload 26122 4408415744 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:48,164 autoreload 26122 4408415744 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/report_views.py changed, reloading.
+INFO 2026-01-02 19:06:51,147 autoreload 26162 4449322496 Watching for file changes with StatReloader
+INFO 2026-01-02 19:06:57,954 autoreload 26162 4449322496 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/services.py changed, reloading.
+INFO 2026-01-02 19:06:59,561 autoreload 26220 4722750976 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:04,342 autoreload 26220 4722750976 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/urls_maps.py changed, reloading.
+INFO 2026-01-02 19:07:05,865 autoreload 26249 4610287104 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:10,045 autoreload 26249 4610287104 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/urls_speech.py changed, reloading.
+INFO 2026-01-02 19:07:11,088 autoreload 26279 4490913280 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:15,684 autoreload 26279 4490913280 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/urls_translator.py changed, reloading.
+INFO 2026-01-02 19:07:16,646 autoreload 26308 4489078272 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:23,118 autoreload 26308 4489078272 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/urls.py changed, reloading.
+INFO 2026-01-02 19:07:24,148 autoreload 26338 4641400320 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:28,856 autoreload 26338 4641400320 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/views_maps.py changed, reloading.
+INFO 2026-01-02 19:07:30,463 autoreload 26367 4575671808 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:34,845 autoreload 26367 4575671808 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/views_speech.py changed, reloading.
+INFO 2026-01-02 19:07:36,646 autoreload 26400 4827682304 Watching for file changes with StatReloader
+INFO 2026-01-02 19:07:40,662 autoreload 26400 4827682304 /Users/kashishkhatri/Desktop/medbuddy/backend/prescriptions/views_translator.py changed, reloading.
+INFO 2026-01-02 19:07:43,029 autoreload 26425 4572644864 Watching for file changes with StatReloader
+INFO 2026-01-02 19:08:58,603 autoreload 26425 4572644864 /Users/kashishkhatri/Desktop/medbuddy/backend/users/admin.py changed, reloading.
+INFO 2026-01-02 19:08:59,932 autoreload 26721 4381459968 Watching for file changes with StatReloader
+INFO 2026-01-02 19:09:11,314 autoreload 26721 4381459968 /Users/kashishkhatri/Desktop/medbuddy/backend/users/models.py changed, reloading.
+INFO 2026-01-02 19:09:13,272 autoreload 26775 4657911296 Watching for file changes with StatReloader
+INFO 2026-01-02 19:09:24,042 autoreload 26775 4657911296 /Users/kashishkhatri/Desktop/medbuddy/backend/users/serializers.py changed, reloading.
+INFO 2026-01-02 19:09:25,870 autoreload 26835 4576773632 Watching for file changes with StatReloader
+INFO 2026-01-02 19:09:47,705 autoreload 26835 4576773632 /Users/kashishkhatri/Desktop/medbuddy/backend/users/urls_admin.py changed, reloading.
+INFO 2026-01-02 19:09:48,883 autoreload 26944 4537898496 Watching for file changes with StatReloader
+INFO 2026-01-02 19:09:55,162 autoreload 26944 4537898496 /Users/kashishkhatri/Desktop/medbuddy/backend/users/urls_doctor.py changed, reloading.
+INFO 2026-01-02 19:09:56,492 autoreload 26980 4624168448 Watching for file changes with StatReloader
+INFO 2026-01-02 19:10:04,929 autoreload 26980 4624168448 /Users/kashishkhatri/Desktop/medbuddy/backend/users/urls_laboratory.py changed, reloading.
+INFO 2026-01-02 19:10:06,017 autoreload 27024 4779468288 Watching for file changes with StatReloader
+INFO 2026-01-02 19:10:19,441 autoreload 27024 4779468288 /Users/kashishkhatri/Desktop/medbuddy/backend/users/urls_test_orders.py changed, reloading.
+INFO 2026-01-02 19:10:20,832 autoreload 27084 4666668544 Watching for file changes with StatReloader
+INFO 2026-01-02 19:10:29,699 autoreload 27084 4666668544 /Users/kashishkhatri/Desktop/medbuddy/backend/users/urls.py changed, reloading.
+INFO 2026-01-02 19:10:32,256 autoreload 27129 4507600384 Watching for file changes with StatReloader
+INFO 2026-01-02 19:10:38,397 autoreload 27129 4507600384 /Users/kashishkhatri/Desktop/medbuddy/backend/users/views_admin.py changed, reloading.
+INFO 2026-01-02 19:10:40,565 autoreload 27168 4488037888 Watching for file changes with StatReloader
+INFO 2026-01-02 19:10:45,329 autoreload 27168 4488037888 /Users/kashishkhatri/Desktop/medbuddy/backend/users/views_laboratory.py changed, reloading.
+INFO 2026-01-02 19:10:47,826 autoreload 27201 4701099520 Watching for file changes with StatReloader
+INFO 2026-01-02 19:11:03,006 autoreload 27201 4701099520 /Users/kashishkhatri/Desktop/medbuddy/backend/users/views.py changed, reloading.
+INFO 2026-01-02 19:11:04,520 autoreload 27289 4748523008 Watching for file changes with StatReloader
+INFO 2026-01-02 19:12:16,413 autoreload 27289 4748523008 /Users/kashishkhatri/Desktop/medbuddy/backend/manage.py changed, reloading.
+INFO 2026-01-02 19:12:18,284 autoreload 27569 4497696256 Watching for file changes with StatReloader
+WARNING 2026-01-02 20:16:19,251 log 27569 123145477877760 Not Found: /favicon.ico
+WARNING 2026-01-02 20:16:34,123 log 27569 123145528246272 Unauthorized: /api/translate/languages/
+WARNING 2026-01-02 20:16:34,137 log 27569 123145545035776 Unauthorized: /api/translate/languages/
+WARNING 2026-01-02 20:16:34,217 log 27569 123145528246272 Unauthorized: /api/prescriptions/dashboard/
+WARNING 2026-01-02 20:16:34,268 log 27569 123145545035776 Unauthorized: /api/prescriptions/reminders/
+WARNING 2026-01-02 20:18:05,378 log 27569 123145595404288 Unauthorized: /api/translate/languages/
+WARNING 2026-01-02 20:18:05,407 log 27569 123145595404288 Unauthorized: /api/translate/languages/
+INFO 2026-01-02 20:19:22,113 azure_email_service 27569 123145545035776 📧 Email sent - To: alok@gmail.com, Subject: 📋 New Prescription Order: PO83743325
+INFO 2026-01-02 20:19:22,180 azure_email_service 27569 123145545035776 Azure Email client initialized successfully
+INFO 2026-01-02 20:19:22,185 _universal 27569 123145545035776 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '2630'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3c12d6ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:23,190 _universal 27569 123145545035776 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:23 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:23,195 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/a0747922-76b7-4c58-a46a-29a82af0ed05?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3c12d6ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:23,334 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:23 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '232'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+ERROR 2026-01-02 20:19:23,337 azure_email_service 27569 123145545035776 Azure Email failed to alok@gmail.com: (EmailDroppedAllRecipientsSuppressed) Message dropped because all recipients were suppressed
+Code: EmailDroppedAllRecipientsSuppressed
+Message: Message dropped because all recipients were suppressed
+INFO 2026-01-02 20:19:23,481 azure_email_service 27569 123145545035776 Django Email sent successfully to alok@gmail.com
+INFO 2026-01-02 20:19:23,482 azure_email_service 27569 123145545035776 📧 Email sent - To: kashishkhatri003@gmail.com, Subject: ✅ Order Confirmed: PO83743325
+INFO 2026-01-02 20:19:23,484 _universal 27569 123145545035776 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '4081'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3cd9269c-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:23,704 _universal 27569 123145545035776 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:23 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:23,707 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ec3b6a12-627c-4fa1-986f-d65913b77515?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3cd9269c-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:23,844 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:23 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:25,418 azure_email_service 27569 123145528246272 📧 Email sent - To: alok@gmail.com, Subject: 📋 New Prescription Order: PO75504406
+INFO 2026-01-02 20:19:25,419 _universal 27569 123145528246272 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '2630'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3e008ae2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:25,641 _universal 27569 123145528246272 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:25 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:25,642 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/cee62f2b-ebf5-4369-b80f-3ef045b72592?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3e008ae2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:25,781 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:25 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:26,823 azure_email_service 27569 123145628983296 📧 Email sent - To: alok@gmail.com, Subject: 📋 New Prescription Order: PO16343241
+INFO 2026-01-02 20:19:26,824 _universal 27569 123145628983296 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '2630'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3ed6e2a4-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:26,849 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ec3b6a12-627c-4fa1-986f-d65913b77515?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3cd9269c-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:27,041 azure_email_service 27569 123145645772800 📧 Email sent - To: alok@gmail.com, Subject: 📋 New Prescription Order: PO64516723
+INFO 2026-01-02 20:19:27,042 _universal 27569 123145645772800 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '2630'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3ef80ef2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:27,048 _universal 27569 123145628983296 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:27,051 _universal 27569 123145662562304 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/8d2b2eef-5250-47ca-aca0-d6026cd93023?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3ed6e2a4-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:27,210 _universal 27569 123145662562304 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '232'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+ERROR 2026-01-02 20:19:27,212 azure_email_service 27569 123145628983296 Azure Email failed to alok@gmail.com: (EmailDroppedAllRecipientsSuppressed) Message dropped because all recipients were suppressed
+Code: EmailDroppedAllRecipientsSuppressed
+Message: Message dropped because all recipients were suppressed
+INFO 2026-01-02 20:19:27,215 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:27,216 azure_email_service 27569 123145628983296 Django Email sent successfully to alok@gmail.com
+INFO 2026-01-02 20:19:27,218 azure_email_service 27569 123145628983296 📧 Email sent - To: kashishkhatri003@gmail.com, Subject: ✅ Order Confirmed: PO16343241
+INFO 2026-01-02 20:19:27,220 _universal 27569 123145628983296 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '4081'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '3f1336dc-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:27,679 _universal 27569 123145645772800 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:27,681 _universal 27569 123145662562304 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/5a7d5eba-9470-49fd-849a-d337d73cc395?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3ef80ef2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:27,759 _universal 27569 123145628983296 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:27,761 _universal 27569 123145679351808 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/c9a992f9-eabd-4206-ab2b-82d2ddf6456e?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3f1336dc-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:27,821 _universal 27569 123145662562304 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:27,893 _universal 27569 123145679351808 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:27 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:28,784 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/cee62f2b-ebf5-4369-b80f-3ef045b72592?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3e008ae2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:28,914 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:28 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '232'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+ERROR 2026-01-02 20:19:28,917 azure_email_service 27569 123145528246272 Azure Email failed to alok@gmail.com: (EmailDroppedAllRecipientsSuppressed) Message dropped because all recipients were suppressed
+Code: EmailDroppedAllRecipientsSuppressed
+Message: Message dropped because all recipients were suppressed
+INFO 2026-01-02 20:19:28,923 azure_email_service 27569 123145528246272 Django Email sent successfully to alok@gmail.com
+INFO 2026-01-02 20:19:28,926 azure_email_service 27569 123145528246272 📧 Email sent - To: kashishkhatri003@gmail.com, Subject: ✅ Order Confirmed: PO75504406
+INFO 2026-01-02 20:19:28,927 _universal 27569 123145528246272 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '4081'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:29,155 _universal 27569 123145528246272 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:29 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:29,157 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/0f92e077-eddb-45b3-9dc1-61da8a7185df?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:29,289 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:29 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:30,218 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ec3b6a12-627c-4fa1-986f-d65913b77515?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3cd9269c-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:30,359 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:30 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:30,359 azure_email_service 27569 123145545035776 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: ec3b6a12-627c-4fa1-986f-d65913b77515
+INFO 2026-01-02 20:19:30,826 _universal 27569 123145662562304 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/5a7d5eba-9470-49fd-849a-d337d73cc395?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3ef80ef2-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:30,897 _universal 27569 123145679351808 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/c9a992f9-eabd-4206-ab2b-82d2ddf6456e?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '3f1336dc-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:30,971 _universal 27569 123145662562304 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:31 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '232'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+ERROR 2026-01-02 20:19:30,972 azure_email_service 27569 123145645772800 Azure Email failed to alok@gmail.com: (EmailDroppedAllRecipientsSuppressed) Message dropped because all recipients were suppressed
+Code: EmailDroppedAllRecipientsSuppressed
+Message: Message dropped because all recipients were suppressed
+INFO 2026-01-02 20:19:30,984 azure_email_service 27569 123145645772800 Django Email sent successfully to alok@gmail.com
+INFO 2026-01-02 20:19:30,992 azure_email_service 27569 123145645772800 📧 Email sent - To: kashishkhatri003@gmail.com, Subject: ✅ Order Confirmed: PO64516723
+INFO 2026-01-02 20:19:30,996 _universal 27569 123145645772800 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails:send?api-version=REDACTED'
+Request method: 'POST'
+Request headers:
+    'Content-Type': 'application/json'
+    'Content-Length': '4081'
+    'Accept': 'application/json'
+    'x-ms-client-request-id': '415354ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+A body is sent with the request
+INFO 2026-01-02 20:19:31,039 _universal 27569 123145679351808 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:31 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:31,044 azure_email_service 27569 123145628983296 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: c9a992f9-eabd-4206-ab2b-82d2ddf6456e
+INFO 2026-01-02 20:19:31,246 _universal 27569 123145645772800 Response status: 202
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:31 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'Operation-Location': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+INFO 2026-01-02 20:19:31,248 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ab0bdc7d-fd23-4f0c-ad2e-2e4dc7c78630?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '415354ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:31,387 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:31 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:32,292 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/0f92e077-eddb-45b3-9dc1-61da8a7185df?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:32,430 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:32 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:34,389 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ab0bdc7d-fd23-4f0c-ad2e-2e4dc7c78630?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '415354ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:34,562 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:34 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:35,432 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/0f92e077-eddb-45b3-9dc1-61da8a7185df?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:35,567 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:35 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:37,567 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ab0bdc7d-fd23-4f0c-ad2e-2e4dc7c78630?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '415354ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:37,705 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:37 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:38,574 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/0f92e077-eddb-45b3-9dc1-61da8a7185df?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:38,709 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:38 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '77'
+    'Connection': 'keep-alive'
+    'Retry-After': '3'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:40,710 _universal 27569 123145561825280 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/ab0bdc7d-fd23-4f0c-ad2e-2e4dc7c78630?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '415354ea-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:40,847 _universal 27569 123145561825280 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:40 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:40,849 azure_email_service 27569 123145645772800 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: ab0bdc7d-fd23-4f0c-ad2e-2e4dc7c78630
+INFO 2026-01-02 20:19:41,717 _universal 27569 123145612193792 Request URL: 'https://medbuddy-comm.unitedstates.communication.azure.com/emails/operations/0f92e077-eddb-45b3-9dc1-61da8a7185df?api-version=REDACTED'
+Request method: 'GET'
+Request headers:
+    'x-ms-client-request-id': '4017b846-e842-11f0-be5d-a45e60e59e19'
+    'User-Agent': 'azsdk-python-communication-email/1.1.0 Python/3.10.9 (macOS-10.16-x86_64-i386-64bit)'
+    'x-ms-date': 'REDACTED'
+    'x-ms-content-sha256': 'REDACTED'
+    'x-ms-return-client-request-id': 'true'
+    'Authorization': 'REDACTED'
+No body was attached to the request
+INFO 2026-01-02 20:19:41,866 _universal 27569 123145612193792 Response status: 200
+Response headers:
+    'Date': 'Sat, 03 Jan 2026 01:19:41 GMT'
+    'Content-Type': 'application/json; charset=utf-8'
+    'Content-Length': '79'
+    'Connection': 'keep-alive'
+    'MS-CV': 'REDACTED'
+    'mise-correlation-id': 'REDACTED'
+    'api-supported-versions': 'REDACTED'
+    'x-azure-ref': 'REDACTED'
+    'Strict-Transport-Security': 'REDACTED'
+    'X-Cache': 'REDACTED'
+    'Accept-Ranges': 'REDACTED'
+INFO 2026-01-02 20:19:41,867 azure_email_service 27569 123145528246272 Azure Email sent successfully to kashishkhatri003@gmail.com, Message ID: 0f92e077-eddb-45b3-9dc1-61da8a7185df

@@ -5,9 +5,17 @@
 
 from django.contrib import admin
 from django.urls import path, include
+from django.http import JsonResponse
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+# Simple health check view
+def health_check(request):
+    return JsonResponse({'status': 'healthy', 'service': 'medbuddy-api'})
+
 urlpatterns = [
+    # Health Check (for Azure/Docker)
+    path('api/health/', health_check, name='health-check'),
+    
     path('admin/', admin.site.urls),
     
     # ============================================

@@ -1,6 +1,21 @@
-####################################
-# Python / Django
-####################################
+# ============================================
+# MedBuddy - Git Ignore
+# ============================================
+
+# ==========================================
+# Environment & Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+secrets/
+
+# ==========================================
+# Python
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,241 +37,110 @@ wheels/
 .installed.cfg
 *.egg
 
-####################################
-# Virtual Environments
-####################################
+# Virtual environments
 venv/
 ENV/
 env/
 .venv/
 
-####################################
-# Django specific
-####################################
+# PyInstaller
+*.manifest
+*.spec
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# ==========================================
+# Django
+# ==========================================
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
-media/
 staticfiles/
-
-####################################
-# Environment Variables / Secrets
-####################################
-.env
-backend/.env
-frontend/.env
-.env.local
-.env.*.local
-*.env
-secrets.json
-*.pem
-*.key
-
-####################################
-# Logs
-####################################
+media/
 logs/
-backend/logs/
-backend/logs/*.log
-*.log
-*.out
-*.err
+*.pot
+*.mo
 
-####################################
-# IDE / OS files
-####################################
+# ==========================================
+# Node.js / Frontend
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Build output
+frontend/dist/
+frontend/build/
+*.local
+
+# ==========================================
+# IDE & Editor
+# ==========================================
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ==========================================
+# OS Generated
+# ==========================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+*.bak
 
-####################################
-# Node.js
-####################################
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# ==========================================
+# Docker
+# ==========================================
+.docker/
 
-####################################
-# Frontend (React / Vite)
-####################################
-frontend/node_modules/
-frontend/dist/
-frontend/build/
-frontend/.vite/
-.vite/
-
-####################################
-# Lockfiles (keep package-lock.json if using npm)
-####################################
-pnpm-lock.yaml
-
-####################################
-# Coverage / Testing
-####################################
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-
-####################################
-# Byte-compiled files
-####################################
-*.pyc
-
-####################################
-# Azure / Cloud
-####################################
+# ==========================================
+# Azure
+# ==========================================
 .azure/
+*.publishsettings
 
-####################################
-# Git rewrite / filter-repo backups
-####################################
-.git/filter-repo/
+# ==========================================
+# Testing
+# ==========================================
+coverage/
+.coverage
+*.cover
+*.py,cover
+.hypothesis/
+.tox/
+.nox/
 
+# ==========================================
+# Jupyter Notebooks
+# ==========================================
+.ipynb_checkpoints
+*.ipynb
 
-# ####################################
-# # Python / Django
-# ####################################
-# __pycache__/
-# *.py[cod]
-# *$py.class
-# *.so
-# .Python
-# build/
-# develop-eggs/
-# dist/
-# downloads/
-# eggs/
-# .eggs/
-# lib/
-# lib64/
-# parts/
-# sdist/
-# var/
-# wheels/
-# *.egg-info/
-# .installed.cfg
-# *.egg
-
-# ####################################
-# # Virtual Environments
-# ####################################
-# venv/
-# ENV/
-# env/
-# .venv/
-
-# ####################################
-# # Django specific
-# ####################################
-# *.log
-# local_settings.py
-# db.sqlite3
-# db.sqlite3-journal
-# media/
-# staticfiles/
-
-# ####################################
-# # Environment Variables / Secrets
-# ####################################
-# .env
-# backend/.env
-# frontend/.env
-# .env.local
-# .env.*.local
-# *.env
-# secrets.json
-# *.pem
-# *.key
-
-# ####################################
-# # Logs
-# ####################################
-# logs/
-# backend/logs/
-# backend/logs/*.log
-# *.log
-# *.out
-# *.err
-
-# ####################################
-# # IDE / OS files
-# ####################################
-# .idea/
-# .vscode/
-# *.swp
-# *.swo
-# *~
-# .DS_Store
-# Thumbs.db
-
-# ####################################
-# # Node.js
-# ####################################
-# node_modules/
-# npm-debug.log*
-# yarn-debug.log*
-# yarn-error.log*
-# pnpm-debug.log*
-
-# ####################################
-# # Frontend (React / Vite)
-# ####################################
-# frontend/node_modules/
-# frontend/dist/
-# frontend/build/
-# frontend/.vite/
-# .vite/
-
-# ####################################
-# # Lockfiles (keep package-lock.json if using npm)
-# ####################################
-# pnpm-lock.yaml
-
-# ####################################
-# # Coverage / Testing
-# ####################################
-# htmlcov/
-# .tox/
-# .coverage
-# .coverage.*
-# .cache
-# nosetests.xml
-# coverage.xml
-# *.cover
-
-# ####################################
-# # Byte-compiled files
-# ####################################
-# *.pyc
-
-# ####################################
-# # Azure / Cloud
-# ####################################
-# .azure/
-
-# ####################################
-# # Git rewrite / filter-repo backups
-# ####################################
-# .git/filter-repo/
-
-*.tar.xz
-*.tar.gz
-*.tar
-.gitignore.save
-__pycache__/
-*.pyc
-*.log
-.env
-frontend/.env
+# ==========================================
+# Misc
+# ==========================================
+*.bak
+*.tmp
+*.temp
+.cache/

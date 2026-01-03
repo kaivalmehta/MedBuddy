@@ -5,7 +5,7 @@
  * Compact translation trigger for inline document translation
  */
 
-.translation-btn-container {
+ .translation-btn-container {
   position: relative;
   display: inline-flex;
   align-items: center;
