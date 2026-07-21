@@ -1,0 +1,410 @@
+from rest_framework import generics, views, status
+from rest_framework.response import Response
+from django.db.models import Count, Sum, Avg
+from django.db.models.functions import Radians, Sin, Cos, ACos
+from django.utils import timezone
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage
+from .serializers import (PharmacySerializer, PharmacyOrderSerializer,
+                          OrderStatusUpdateSerializer, PharmacyInventorySerializer,
+                          PharmacyReviewSerializer, ChatMessageSerializer)
+
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.shortcuts import get_object_or_404
+from datetime import date
+
+from users.models import User
+from prescriptions.models import Prescription, PrescriptionDrug
+from prescriptions.services import AzureServices
+from prescriptions.email_service import EmailService
+import logging
+
+logger = logging.getLogger(__name__)
+
+class PharmacyProfileView(generics.RetrieveUpdateAPIView):
+    serializer_class = PharmacySerializer
+    
+    def get_object(self):
+        return Pharmacy.objects.get(user=self.request.user)
+
+
+class PharmacyOrderListView(generics.ListAPIView):
+    serializer_class = PharmacyOrderSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'pharmacy':
+            qs = PharmacyOrder.objects.filter(pharmacy__user=user)
+        else:
+            qs = PharmacyOrder.objects.filter(patient=user)
+        
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        
+        return qs.select_related('prescription', 'pharmacy', 'patient')
+
+
+class PharmacyOrderDetailView(generics.RetrieveAPIView):
+    serializer_class = PharmacyOrderSerializer
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'pharmacy':
+            return PharmacyOrder.objects.filter(pharmacy__user=user)
+        return PharmacyOrder.objects.filter(patient=user)
+
+
+class UpdateOrderStatusView(views.APIView):
+    def patch(self, request, pk):
+        try:
+            order = PharmacyOrder.objects.get(pk=pk, pharmacy__user=request.user)
+        except PharmacyOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        serializer = OrderStatusUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        order.status = serializer.validated_data['status']
+        if 'pharmacist_notes' in serializer.validated_data:
+            order.pharmacist_notes = serializer.validated_data['pharmacist_notes']
+        if 'estimated_ready_time' in serializer.validated_data:
+            order.estimated_ready_time = serializer.validated_data['estimated_ready_time']
+        
+        if order.status == 'completed':
+            order.completed_at = timezone.now()
+            order.prescription.status = 'completed'
+            order.prescription.save()
+        
+        order.save()
+        return Response(PharmacyOrderSerializer(order).data)
+
+
+class VerifyPrescriptionView(views.APIView):
+    def post(self, request, pk):
+        try:
+            order = PharmacyOrder.objects.get(pk=pk, pharmacy__user=request.user)
+        except PharmacyOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        order.verified_by = request.data.get('verified_by', request.user.email)
+        order.verification_notes = request.data.get('notes', '')
+        order.verified_at = timezone.now()
+        order.status = 'verified'
+        order.save()
+        
+        return Response(PharmacyOrderSerializer(order).data)
+
+
+class InventoryListView(generics.ListCreateAPIView):
+    serializer_class = PharmacyInventorySerializer
+    
+    def get_queryset(self):
+        return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+    
+    def perform_create(self, serializer):
+        pharmacy = Pharmacy.objects.get(user=self.request.user)
+        serializer.save(pharmacy=pharmacy)
+
+
+class InventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = PharmacyInventorySerializer
+    
+    def get_queryset(self):
+        return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+
+
+class NearbyPharmaciesView(generics.ListAPIView):
+    serializer_class = PharmacySerializer
+    permission_classes = []
+    
+    def get_queryset(self):
+        lat = float(self.request.query_params.get('lat', 0))
+        lng = float(self.request.query_params.get('lng', 0))
+        radius_km = float(self.request.query_params.get('radius', 10))
+        
+        return Pharmacy.objects.filter(
+            is_active=True,
+            is_verified=True,
+            latitude__isnull=False
+        ).annotate(
+            distance_km=6371 * ACos(
+                Cos(Radians(lat)) * Cos(Radians('latitude')) *
+                Cos(Radians('longitude') - Radians(lng)) +
+                Sin(Radians(lat)) * Sin(Radians('latitude'))
+            )
+        ).filter(distance_km__lte=radius_km).order_by('distance_km')
+
+
+class PharmacyReviewView(generics.ListCreateAPIView):
+    serializer_class = PharmacyReviewSerializer
+    
+    def get_queryset(self):
+        return PharmacyReview.objects.filter(pharmacy_id=self.kwargs['pk'])
+    
+    def perform_create(self, serializer):
+        pharmacy = Pharmacy.objects.get(pk=self.kwargs['pk'])
+        review = serializer.save(user=self.request.user, pharmacy=pharmacy)
+        
+        avg_rating = PharmacyReview.objects.filter(pharmacy=pharmacy).aggregate(avg=Avg('rating'), count=Count('id'))
+        pharmacy.rating = avg_rating['avg'] or 0
+        pharmacy.total_reviews = avg_rating['count']
+        pharmacy.save()
+
+
+class ChatView(generics.ListCreateAPIView):
+    serializer_class = ChatMessageSerializer
+    
+    def get_queryset(self):
+        return ChatMessage.objects.filter(order_id=self.kwargs['order_id'])
+    
+    def perform_create(self, serializer):
+        order = PharmacyOrder.objects.get(pk=self.kwargs['order_id'])
+        serializer.save(order=order, sender=self.request.user)
+
+        
+# backend/pharmacy/views.py
+# ADD these new views to your existing pharmacy/views.py
+
+class IsPharmacyUser:
+    """Permission class for pharmacy-only views"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'pharmacy'
+
+
+class PharmacySendPrescriptionView(views.APIView):
+    """
+    Pharmacy uploads and sends a prescription to a patient.
+    Used when pharmacy scans/processes a prescription and wants to 
+    send the digitized version to the patient.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        file = request.FILES.get('file')
+        notes = request.data.get('notes', '')
+        send_email = request.data.get('send_email', 'true').lower() == 'true'
+        
+        # Prescription details (optional - can be filled during analysis)
+        doctor_name = request.data.get('doctor_name', '')
+        clinic_name = request.data.get('clinic_name', '')
+        
+        if not patient_email:
+            return Response({'error': 'Patient email is required'}, status=400)
+        
+        if not file:
+            return Response({'error': 'Prescription file is required'}, status=400)
+        
+        # Validate file
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+        if file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type. Use JPG, PNG, or PDF'}, status=400)
+        
+        # Find or create patient
+        patient, created = User.objects.get_or_create(
+            email=patient_email,
+            defaults={
+                'username': patient_email.split('@')[0],
+                'role': 'patient',
+                'is_active': True
+            }
+        )
+        
+        if created:
+            # Set a random password for new users - they'll need to reset it
+            patient.set_password(User.objects.make_random_password())
+            patient.save()
+            # Create health profile
+            from users.models import HealthProfile
+            HealthProfile.objects.create(user=patient)
+        
+        # Get pharmacy info
+        try:
+            pharmacy_profile = request.user.pharmacy_profile
+            pharmacy_name = pharmacy_profile.name
+        except:
+            pharmacy_name = request.user.email
+        
+        # Upload to Azure
+        azure_svc = AzureServices()
+        blob_name, blob_url = azure_svc.upload_prescription(file, str(patient.id))
+        
+        # Create prescription
+        prescription = Prescription.objects.create(
+            user=patient,
+            source='pharmacy',
+            sent_by=request.user,
+            doctor_name=doctor_name,
+            clinic_name=clinic_name,
+            prescription_date=date.today(),
+            image_url=blob_url,
+            blob_name=blob_name,
+            file_type='pdf' if file.content_type == 'application/pdf' else 'image',
+            status='uploaded',
+            notes=notes
+        )
+        
+        # Try OCR
+        try:
+            ocr_result = azure_svc.extract_text(blob_url)
+            prescription.ocr_raw_text = ocr_result.get('text', '')
+            prescription.ocr_confidence = ocr_result.get('confidence', 0)
+            prescription.save()
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
+        
+        # Generate hash and check duplicates
+        prescription.content_hash = prescription.generate_content_hash()
+        is_duplicate = prescription.check_and_mark_duplicate()
+        prescription.save()
+        
+        # Send email notification
+        if send_email and patient.receive_email_notifications:
+            EmailService.send_prescription_email(
+                prescription=prescription,
+                recipient_email=patient.email,
+                sender_name=pharmacy_name,
+                sender_type='pharmacy'
+            )
+        
+        return Response({
+            'message': 'Prescription sent to patient successfully',
+            'prescription_id': str(prescription.id),
+            'patient_email': patient.email,
+            'is_new_patient': created,
+            'is_duplicate': is_duplicate,
+            'email_sent': send_email and patient.receive_email_notifications,
+            'ocr_success': bool(prescription.ocr_raw_text)
+        }, status=201)
+
+
+class PharmacyAnalyzePrescriptionView(views.APIView):
+    """
+    Analyze a prescription that pharmacy has uploaded.
+    Runs OCR and AI parsing.
+    """
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request, pk):
+        prescription = get_object_or_404(
+            Prescription, 
+            pk=pk,
+            sent_by=request.user,
+            source='pharmacy'
+        )
+        
+        azure_svc = AzureServices()
+        
+        # Run OCR if needed
+        if not prescription.ocr_raw_text:
+            try:
+                ocr_result = azure_svc.extract_text(prescription.image_url)
+                prescription.ocr_raw_text = ocr_result.get('text', '')
+                prescription.ocr_confidence = ocr_result.get('confidence', 0)
+                prescription.save()
+            except Exception as e:
+                logger.error(f"OCR failed: {e}")
+                return Response({'error': 'OCR extraction failed'}, status=500)
+        
+        if not prescription.ocr_raw_text:
+            return Response({
+                'error': 'Could not extract text from prescription image'
+            }, status=400)
+        
+        # Parse prescription
+        try:
+            parsed_data = azure_svc.parse_prescription(prescription.ocr_raw_text)
+        except Exception as e:
+            logger.error(f"Parsing failed: {e}")
+            parsed_data = {"medications": []}
+        
+        prescription.parsed_data = parsed_data
+        prescription.doctor_name = parsed_data.get('doctor_name', '') or prescription.doctor_name
+        prescription.clinic_name = parsed_data.get('clinic_name', '') or prescription.clinic_name
+        
+        # Create drug records
+        PrescriptionDrug.objects.filter(prescription=prescription).delete()
+        
+        for drug_data in parsed_data.get('medications', []):
+            PrescriptionDrug.objects.create(
+                prescription=prescription,
+                drug_name=drug_data.get('drug_name', 'Unknown'),
+                generic_name=drug_data.get('generic_name', ''),
+                dosage=drug_data.get('dosage', ''),
+                frequency=drug_data.get('frequency', ''),
+                duration=drug_data.get('duration', ''),
+                instructions=drug_data.get('instructions', ''),
+                category=drug_data.get('category', 'other'),
+                primary_use=drug_data.get('primary_use', ''),
+                common_side_effects=drug_data.get('side_effects', [])
+            )
+        
+        prescription.status = 'analyzed'
+        prescription.save()
+        
+        from prescriptions.serializers import PrescriptionDetailSerializer
+        return Response(PrescriptionDetailSerializer(prescription).data)
+
+
+class PharmacyPrescriptionHistoryView(views.APIView):
+    """List prescriptions sent by this pharmacy"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        prescriptions = Prescription.objects.filter(
+            sent_by=request.user,
+            source='pharmacy'
+        ).select_related('user').order_by('-created_at')
+        
+        return Response({
+            'count': prescriptions.count(),
+            'prescriptions': [{
+                'id': str(p.id),
+                'patient_email': p.user.email,
+                'patient_name': f"{p.user.first_name} {p.user.last_name}".strip() or p.user.email,
+                'doctor_name': p.doctor_name,
+                'prescription_date': p.prescription_date,
+                'status': p.status,
+                'drugs_count': p.drugs.count(),
+                'is_duplicate': p.is_duplicate,
+                'email_sent': p.email_sent,
+                'created_at': p.created_at
+            } for p in prescriptions[:50]]
+        })
+
+
+class PharmacyDashboardStatsView(views.APIView):
+    """Dashboard statistics for pharmacy"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        from pharmacy.models import PharmacyOrder
+        from django.db.models import Count, Sum
+        
+        today = date.today()
+        
+        # Prescriptions sent
+        sent_prescriptions = Prescription.objects.filter(
+            sent_by=request.user,
+            source='pharmacy'
+        )
+        
+        # Orders (if pharmacy receives orders)
+        try:
+            pharmacy = request.user.pharmacy_profile
+            orders = PharmacyOrder.objects.filter(pharmacy=pharmacy)
+            orders_today = orders.filter(created_at__date=today).count()
+            pending_orders = orders.filter(status__in=['received', 'verified', 'preparing']).count()
+        except:
+            orders_today = 0
+            pending_orders = 0
+        
+        return Response({
+            'prescriptions_sent_total': sent_prescriptions.count(),
+            'prescriptions_sent_today': sent_prescriptions.filter(created_at__date=today).count(),
+            'orders_received_today': orders_today,
+            'pending_orders': pending_orders,
+            'unique_patients': sent_prescriptions.values('user').distinct().count()
+        })

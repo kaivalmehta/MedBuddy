@@ -1,39 +1,491 @@
 # backend/users/views.py
+# Complete user views with OTP verification, registration, login, and password reset
+
 from rest_framework import generics, status, views
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-from .models import User, HealthProfile, FamilyMember
-from .serializers import (UserSerializer, RegisterSerializer, LoginSerializer,
-                          HealthProfileSerializer, FamilyMemberSerializer)
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.db import transaction
 
-class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
-    serializer_class = RegisterSerializer
+from .models import (
+    User, HealthProfile, FamilyMember, DoctorProfile, LaboratoryProfile,
+    EmailVerificationOTP, PendingRegistration, PasswordResetToken
+)
+from .serializers import (
+    UserSerializer, InitiateRegistrationSerializer, VerifyRegistrationOTPSerializer,
+    ResendOTPSerializer, LoginStep1Serializer, LoginStep2Serializer, QuickLoginSerializer,
+    RequestPasswordResetSerializer, VerifyPasswordResetOTPSerializer, ResetPasswordSerializer,
+    ChangePasswordSerializer, HealthProfileSerializer, FamilyMemberSerializer
+)
+from prescriptions.email_service import EmailService
+from prescriptions.services import AzureServices
+import logging
+import json
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# REGISTRATION VIEWS (2-Step with OTP)
+# ============================================
+
+class InitiateRegistrationView(views.APIView):
+    """
+    Step 1: Initiate Registration
+    - Validates registration data
+    - Handles file upload for professional verification documents
+    - Sends OTP to email for verification
+    - Stores pending registration
+    """
+    permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    
+    def post(self, request):
+        # Log incoming data for debugging
+        logger.info(f"Registration request - Content-Type: {request.content_type}")
+        logger.info(f"Registration request - FILES: {list(request.FILES.keys())}")
+        logger.info(f"Registration request - role: {request.data.get('role')}")
+        
+        # Convert QueryDict to regular dict for proper manipulation
+        if hasattr(request.data, 'dict'):
+            data = request.data.dict()
+        else:
+            data = dict(request.data)
+        
+        # Parse JSON fields if sent as strings (from FormData) - MUST happen before serializer
+        for field in ['doctor_profile', 'laboratory_profile', 'pharmacy_profile']:
+            if field in data:
+                field_value = data[field]
+                logger.info(f"Field {field} value type: {type(field_value)}, value: {field_value[:100] if isinstance(field_value, str) else field_value}")
+                if isinstance(field_value, str):
+                    if field_value.strip():  # Not empty
+                        try:
+                            data[field] = json.loads(field_value)
+                            logger.info(f"Successfully parsed {field} from JSON string")
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse {field}: {e}, value was: {field_value}")
+                            # Remove invalid field to avoid serializer error
+                            data.pop(field, None)
+                    else:
+                        # Empty string - remove the field
+                        data.pop(field, None)
+                elif field_value is None:
+                    data.pop(field, None)
+        
+        logger.info(f"Data after JSON parsing: {list(data.keys())}")
+        
+        serializer = InitiateRegistrationSerializer(data=data)
+        if not serializer.is_valid():
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=400)
+        
+        email = serializer.validated_data['email']
+        role = serializer.validated_data.get('role', 'patient')
+        
+        # Handle verification document upload for professionals
+        verification_doc_url = ''
+        verification_file = request.FILES.get('verification_document')
+        
+        logger.info(f"Registration - verification_file present: {verification_file is not None}")
+        
+        if verification_file and role != 'patient':
+            try:
+                logger.info(f"Uploading verification document for {email}, role: {role}")
+                azure_svc = AzureServices()
+                _, verification_doc_url = azure_svc.upload_verification_document(
+                    verification_file, 
+                    role, 
+                    email.split('@')[0]
+                )
+                logger.info(f"Verification document uploaded: {verification_doc_url}")
+            except Exception as e:
+                logger.error(f"Failed to upload verification document: {e}")
+                # Continue without the document - admin can request it later
+        
+        # Store pending registration data
+        registration_data = {
+            'email': email,
+            'username': serializer.validated_data['username'],
+            'password': serializer.validated_data['password'],
+            'first_name': serializer.validated_data.get('first_name', ''),
+            'last_name': serializer.validated_data.get('last_name', ''),
+            'role': role,
+            'phone': serializer.validated_data.get('phone', ''),
+            'doctor_profile': serializer.validated_data.get('doctor_profile'),
+            'laboratory_profile': serializer.validated_data.get('laboratory_profile'),
+            'pharmacy_profile': serializer.validated_data.get('pharmacy_profile'),
+            'verification_document_url': verification_doc_url,
+        }
+        
+        logger.info(f"Registration data - verification_document_url: {verification_doc_url}")
+        
+        # Create pending registration
+        pending = PendingRegistration.create_pending(email, registration_data)
+        
+        # Create and send OTP
+        otp = EmailVerificationOTP.create_otp(email, 'registration')
+        
+        # Send OTP email
+        EmailService.send_registration_otp_email(email, otp.otp_code)
+        
+        return Response({
+            'message': 'Verification code sent to your email',
+            'email': email,
+            'expires_in_minutes': 10
+        }, status=status.HTTP_200_OK)
+
+        # In InitiateRegistrationView.post(), add after creating the profile:
+
+        # Save location if provided (for professionals)
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+
+        if latitude and longitude:
+            try:
+                from decimal import Decimal
+                lat = Decimal(str(latitude))
+                lng = Decimal(str(longitude))
+                
+                if user.role == 'doctor' and hasattr(user, 'doctor_profile'):
+                    user.doctor_profile.latitude = lat
+                    user.doctor_profile.longitude = lng
+                    user.doctor_profile.save()
+                elif user.role == 'pharmacy':
+                    from pharmacy.models import Pharmacy
+                    pharmacy = Pharmacy.objects.filter(user=user).first()
+                    if pharmacy:
+                        pharmacy.latitude = lat
+                        pharmacy.longitude = lng
+                        pharmacy.save()
+                elif user.role == 'laboratory' and hasattr(user, 'laboratory_profile'):
+                    user.laboratory_profile.latitude = lat
+                    user.laboratory_profile.longitude = lng
+                    user.laboratory_profile.save()
+            except Exception as e:
+                logger.warning(f"Could not save location for user {user.email}: {e}")
+
+
+class VerifyRegistrationOTPView(views.APIView):
+    """
+    Step 2: Verify OTP and Complete Registration
+    - Verifies OTP
+    - Creates user account
+    - Returns tokens
+    """
     permission_classes = [AllowAny]
     
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+    @transaction.atomic
+    def post(self, request):
+        serializer = VerifyRegistrationOTPSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
+        
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+        
+        # Get pending registration
+        try:
+            pending = PendingRegistration.objects.get(email=email, is_verified=False)
+        except PendingRegistration.DoesNotExist:
+            return Response(
+                {'error': 'No pending registration found. Please start registration again.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if pending.is_expired:
+            pending.delete()
+            return Response(
+                {'error': 'Registration expired. Please start again.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Verify OTP
+        otp = EmailVerificationOTP.objects.filter(
+            email=email,
+            purpose='registration',
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not otp:
+            return Response(
+                {'error': 'No OTP found. Please request a new one.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        success, message = otp.verify(otp_code)
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create user from pending registration
+        data = pending.registration_data
+        
+        user = User.objects.create_user(
+            email=data['email'],
+            username=data['username'],
+            password=data['password'],
+            first_name=data.get('first_name', ''),
+            last_name=data.get('last_name', ''),
+            role=data.get('role', 'patient'),
+            phone=data.get('phone', ''),
+            is_email_verified=True,
+            is_verified=True
+        )
+        
+        # Create role-specific profiles
+        self._create_role_profiles(user, data)
+        
+        # Mark pending as verified and delete
+        pending.delete()
+        
+        # Send welcome email
+        try:
+            EmailService.send_welcome_email(user.email, user.first_name, user.role)
+        except Exception as e:
+            logger.error(f"Failed to send welcome email: {e}")
+        
+        # Notify admin of new professional registration
+        if user.role in ['doctor', 'pharmacy', 'laboratory']:
+            try:
+                registration_number = ''
+                if user.role == 'doctor':
+                    registration_number = data.get('doctor_profile', {}).get('registration_number', '')
+                elif user.role == 'pharmacy':
+                    registration_number = data.get('pharmacy_profile', {}).get('license_number', '')
+                elif user.role == 'laboratory':
+                    registration_number = data.get('laboratory_profile', {}).get('license_number', '')
+                
+                EmailService.notify_admins_of_new_registration(
+                    f"{user.first_name} {user.last_name}".strip() or user.email,
+                    user.role,
+                    registration_number
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify admin of new registration: {e}")
+        
+        # Generate tokens
         refresh = RefreshToken.for_user(user)
+        
         return Response({
+            'message': 'Registration successful',
             'user': UserSerializer(user).data,
             'tokens': {
                 'access': str(refresh.access_token),
                 'refresh': str(refresh),
             }
         }, status=status.HTTP_201_CREATED)
+    
+    def _create_role_profiles(self, user, data):
+        """Create role-specific profiles based on user role"""
+        verification_doc_url = data.get('verification_document_url', '')
+        
+        if user.role == 'patient':
+            HealthProfile.objects.create(user=user)
+        
+        elif user.role == 'doctor':
+            doctor_data = data.get('doctor_profile', {}) or {}
+            DoctorProfile.objects.create(
+                user=user,
+                full_name=f"{user.first_name} {user.last_name}".strip() or user.email,
+                specialization=doctor_data.get('specialization', 'General Practice'),
+                qualification=doctor_data.get('qualification', 'MBBS'),
+                registration_number=doctor_data.get('registration_number', f'PENDING-{user.id}'),
+                clinic_name=doctor_data.get('clinic_name', ''),
+                clinic_address=doctor_data.get('clinic_address', ''),
+                clinic_phone=doctor_data.get('clinic_phone', ''),
+                verification_document=verification_doc_url,
+            )
+        
+        elif user.role == 'laboratory':
+            lab_data = data.get('laboratory_profile', {}) or {}
+            LaboratoryProfile.objects.create(
+                user=user,
+                name=lab_data.get('name', f"{user.first_name}'s Laboratory"),
+                license_number=lab_data.get('license_number', f'PENDING-{user.id}'),
+                address=lab_data.get('address', 'Please update'),
+                city=lab_data.get('city', 'Please update'),
+                state=lab_data.get('state', 'Please update'),
+                zip_code=lab_data.get('zip_code', '00000'),
+                phone=user.phone or '0000000000',
+                verification_document=verification_doc_url,
+            )
+        
+        elif user.role == 'pharmacy':
+            from pharmacy.models import Pharmacy
+            pharmacy_data = data.get('pharmacy_profile', {}) or {}
+            Pharmacy.objects.create(
+                user=user,
+                name=pharmacy_data.get('name', f"{user.first_name}'s Pharmacy"),
+                license_number=pharmacy_data.get('license_number', f'PENDING-{user.id}'),
+                address=pharmacy_data.get('address', 'Please update'),
+                city=pharmacy_data.get('city', 'Please update'),
+                state=pharmacy_data.get('state', 'Please update'),
+                zip_code=pharmacy_data.get('zip_code', '00000'),
+                phone=user.phone or '0000000000',
+                email=user.email,
+                verification_document=verification_doc_url,
+            )
 
-class LoginView(views.APIView):
+
+class ResendOTPView(views.APIView):
+    """Resend OTP for registration or login"""
     permission_classes = [AllowAny]
     
     def post(self, request):
-        serializer = LoginSerializer(data=request.data)
+        serializer = ResendOTPSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        purpose = serializer.validated_data['purpose']
+        
+        if purpose == 'registration':
+            # Check pending registration exists
+            if not PendingRegistration.objects.filter(email=email, is_verified=False).exists():
+                return Response(
+                    {'error': 'No pending registration found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif purpose == 'login':
+            # Check user exists
+            if not User.objects.filter(email=email, is_active=True).exists():
+                return Response(
+                    {'error': 'No account found with this email'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        
+        # Create and send new OTP
+        otp = EmailVerificationOTP.create_otp(email, purpose)
+        
+        if purpose == 'registration':
+            EmailService.send_registration_otp_email(email, otp.otp_code)
+        else:
+            EmailService.send_login_otp_email(email, otp.otp_code)
+        
+        return Response({
+            'message': 'New verification code sent',
+            'email': email,
+            'expires_in_minutes': 10
+        })
+
+
+# ============================================
+# LOGIN VIEWS (2-Step with OTP)
+# ============================================
+
+class LoginStep1View(views.APIView):
+    """
+    Step 1: Validate credentials and send OTP
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = LoginStep1Serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
         user = serializer.validated_data['user']
+        
+        # Create and send OTP
+        otp = EmailVerificationOTP.create_otp(user.email, 'login', user=user)
+        EmailService.send_login_otp_email(user.email, otp.otp_code)
+        
+        return Response({
+            'message': 'Verification code sent to your email',
+            'email': user.email,
+            'expires_in_minutes': 10,
+            'requires_otp': True
+        })
+
+
+class LoginStep2View(views.APIView):
+    """
+    Step 2: Verify OTP and complete login
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = LoginStep2Serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+        
+        # Get user
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Allow suspended users to login - they will have limited access
+        
+        # Verify OTP
+        otp = EmailVerificationOTP.objects.filter(
+            email=email,
+            purpose='login',
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not otp:
+            return Response(
+                {'error': 'No OTP found. Please request a new one.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        success, message = otp.verify(otp_code)
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Mark email as verified if not already
+        if not user.is_email_verified:
+            user.mark_email_verified()
+        
+        # Generate tokens
         refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'message': 'Login successful',
+            'user': UserSerializer(user).data,
+            'tokens': {
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+            }
+        })
+
+
+class QuickLoginView(views.APIView):
+    """
+    Quick login without OTP (for development or when OTP verification is disabled)
+    Can be configured to require email verification
+    """
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = QuickLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = serializer.validated_data['user']
+        skip_otp = serializer.validated_data.get('skip_otp', False)
+        
+        # For users who haven't verified email, send OTP
+        if not user.is_email_verified and not skip_otp:
+            otp = EmailVerificationOTP.create_otp(user.email, 'login', user=user)
+            EmailService.send_login_otp_email(user.email, otp.otp_code)
+            return Response({
+                'message': 'Please verify your email. OTP sent.',
+                'email': user.email,
+                'requires_otp': True,
+                'expires_in_minutes': 10
+            })
+        
+        # Generate tokens
+        refresh = RefreshToken.for_user(user)
+        
         return Response({
             'user': UserSerializer(user).data,
             'tokens': {
@@ -42,31 +494,192 @@ class LoginView(views.APIView):
             }
         })
 
+
 class LogoutView(views.APIView):
+    """Logout and blacklist the refresh token"""
+    permission_classes = [IsAuthenticated]
+    
     def post(self, request):
         try:
             refresh_token = request.data.get('refresh')
-            token = RefreshToken(refresh_token)
-            token.blacklist()
+            if refresh_token:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
             return Response({'message': 'Successfully logged out'})
         except Exception:
             return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
+
+# ============================================
+# PASSWORD RESET VIEWS
+# ============================================
+
+class RequestPasswordResetView(views.APIView):
+    """Request password reset - sends OTP"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = RequestPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            # Don't reveal if user exists or not
+            return Response({
+                'message': 'If an account exists with this email, you will receive a reset code.'
+            })
+        
+        # Create reset token
+        reset_token = PasswordResetToken.create_token(user)
+        
+        # Send email
+        EmailService.send_password_reset_email(email, reset_token.otp_code)
+        
+        return Response({
+            'message': 'If an account exists with this email, you will receive a reset code.',
+            'expires_in_minutes': 30
+        })
+
+
+class VerifyPasswordResetOTPView(views.APIView):
+    """Verify password reset OTP before allowing password change"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = VerifyPasswordResetOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+        
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        reset_token = PasswordResetToken.objects.filter(
+            user=user,
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not reset_token:
+            return Response(
+                {'error': 'No reset request found. Please request a new one.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        success, message = reset_token.verify(otp_code)
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'message': 'OTP verified. You can now reset your password.',
+            'verified': True
+        })
+
+
+class ResetPasswordView(views.APIView):
+    """Complete password reset with new password"""
+    permission_classes = [AllowAny]
+    
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        email = serializer.validated_data['email']
+        otp_code = serializer.validated_data['otp_code']
+        new_password = serializer.validated_data['new_password']
+        
+        try:
+            user = User.objects.get(email=email, is_active=True)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid request'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        reset_token = PasswordResetToken.objects.filter(
+            user=user,
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not reset_token:
+            return Response(
+                {'error': 'No reset request found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        success, message = reset_token.verify(otp_code)
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Reset password
+        user.set_password(new_password)
+        user.save()
+        
+        # Mark token as used
+        reset_token.mark_used()
+        
+        # Mark email as verified if not already
+        if not user.is_email_verified:
+            user.mark_email_verified()
+        
+        return Response({'message': 'Password reset successfully. You can now login.'})
+
+
+class ChangePasswordView(views.APIView):
+    """Change password for authenticated user"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = request.user
+        
+        # Verify current password
+        if not user.check_password(serializer.validated_data['current_password']):
+            return Response(
+                {'error': 'Current password is incorrect'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Set new password
+        user.set_password(serializer.validated_data['new_password'])
+        user.save()
+        
+        return Response({'message': 'Password changed successfully'})
+
+
+# ============================================
+# PROFILE VIEWS
+# ============================================
+
 class ProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update current user profile"""
     serializer_class = UserSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_object(self):
         return self.request.user
 
+
 class HealthProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update health profile"""
     serializer_class = HealthProfileSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_object(self):
         profile, _ = HealthProfile.objects.get_or_create(user=self.request.user)
         return profile
 
+
 class FamilyMemberListCreateView(generics.ListCreateAPIView):
+    """List and create family members"""
     serializer_class = FamilyMemberSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return FamilyMember.objects.filter(user=self.request.user, is_active=True)
@@ -74,12 +687,166 @@ class FamilyMemberListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+
 class FamilyMemberDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete a family member"""
     serializer_class = FamilyMemberSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return FamilyMember.objects.filter(user=self.request.user)
     
     def perform_destroy(self, instance):
+        # Soft delete
         instance.is_active = False
         instance.save()
+
+
+# ============================================
+# EMAIL VERIFICATION STATUS
+# ============================================
+
+class CheckEmailVerificationView(views.APIView):
+    """Check if email is verified for current user"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        user = request.user
+        return Response({
+            'email': user.email,
+            'is_email_verified': user.is_email_verified,
+            'is_professional_verified': user.is_professional_verified,
+            'is_fully_verified': user.is_fully_verified,
+            'role': user.role
+        })
+
+
+class RequestEmailVerificationView(views.APIView):
+    """Request email verification OTP for current user"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        
+        if user.is_email_verified:
+            return Response({'message': 'Email already verified'})
+        
+        otp = EmailVerificationOTP.create_otp(user.email, 'login', user=user)
+        EmailService.send_login_otp_email(user.email, otp.otp_code)
+        
+        return Response({
+            'message': 'Verification code sent',
+            'email': user.email,
+            'expires_in_minutes': 10
+        })
+
+
+class VerifyEmailView(views.APIView):
+    """Verify email with OTP for current user"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        user = request.user
+        otp_code = request.data.get('otp_code')
+        
+        if not otp_code:
+            return Response(
+                {'error': 'OTP code is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        otp = EmailVerificationOTP.objects.filter(
+            email=user.email,
+            user=user,
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not otp:
+            return Response(
+                {'error': 'No OTP found. Please request a new one.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        success, message = otp.verify(otp_code)
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.mark_email_verified()
+        
+        return Response({
+            'message': 'Email verified successfully',
+            'is_email_verified': True
+        })
+
+
+class UpdateLocationView(views.APIView):
+    """Update professional's location coordinates"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        latitude = request.data.get('latitude')
+        longitude = request.data.get('longitude')
+        address = request.data.get('address', '')
+        
+        if latitude is None or longitude is None:
+            return Response(
+                {'error': 'Latitude and longitude are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            from decimal import Decimal
+            lat = Decimal(str(latitude))
+            lng = Decimal(str(longitude))
+        except Exception:
+            return Response(
+                {'error': 'Invalid coordinates'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = request.user
+        updated = False
+        
+        if user.role == 'doctor':
+            profile = getattr(user, 'doctor_profile', None)
+            if profile:
+                profile.latitude = lat
+                profile.longitude = lng
+                if address:
+                    profile.clinic_address = address
+                profile.save()
+                updated = True
+                
+        elif user.role == 'pharmacy':
+            from pharmacy.models import Pharmacy
+            pharmacy = Pharmacy.objects.filter(user=user).first()
+            if pharmacy:
+                pharmacy.latitude = lat
+                pharmacy.longitude = lng
+                if address:
+                    pharmacy.address = address
+                pharmacy.save()
+                updated = True
+                
+        elif user.role == 'laboratory':
+            profile = getattr(user, 'laboratory_profile', None)
+            if profile:
+                profile.latitude = lat
+                profile.longitude = lng
+                if address:
+                    profile.address = address
+                profile.save()
+                updated = True
+        
+        if updated:
+            return Response({
+                'message': 'Location updated successfully',
+                'latitude': str(lat),
+                'longitude': str(lng)
+            })
+        else:
+            return Response(
+                {'error': 'No professional profile found'},
+                status=status.HTTP_404_NOT_FOUND
+            )

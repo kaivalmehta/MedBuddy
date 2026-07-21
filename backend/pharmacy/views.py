@@ -1,23 +1,782 @@
+# backend/pharmacy/views.py
+# Pharmacy views with OTP verification for patient access
+
 from rest_framework import generics, views, status
 from rest_framework.response import Response
-from django.db.models import Count, Sum, Avg
+from rest_framework.permissions import IsAuthenticated, BasePermission, AllowAny
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.db.models import Count, Sum, Avg, F, Q
 from django.db.models.functions import Radians, Sin, Cos, ACos
 from django.utils import timezone
-from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage
-from .serializers import (PharmacySerializer, PharmacyOrderSerializer,
-                          OrderStatusUpdateSerializer, PharmacyInventorySerializer,
-                          PharmacyReviewSerializer, ChatMessageSerializer)
+from django.shortcuts import get_object_or_404
+from django.db import transaction
+from datetime import date
 
+from .models import Pharmacy, PharmacyOrder, PharmacyInventory, PharmacyReview, ChatMessage, PharmacySale, PrescriptionOrder
+from .serializers import (
+    PharmacySerializer, PharmacyOrderSerializer,
+    OrderStatusUpdateSerializer, PharmacyInventorySerializer,
+    PharmacyReviewSerializer, ChatMessageSerializer,
+    PharmacySaleSerializer, DispenseItemSerializer,
+    PrescriptionOrderSerializer, PrescriptionOrderCreateSerializer,
+    PrescriptionOrderQuoteSerializer, PrescriptionOrderStatusUpdateSerializer,
+    PrescriptionOrderListSerializer
+)
+
+from users.models import User, PatientAccessToken, HealthProfile
+from users.serializers import RequestPatientAccessSerializer, VerifyPatientOTPSerializer
+from prescriptions.models import Prescription, PrescriptionDrug
+from prescriptions.services import AzureServices
+from prescriptions.email_service import EmailService
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# PERMISSION CLASSES
+# ============================================
+
+class IsPharmacyUser(BasePermission):
+    """Permission class for pharmacy-only views"""
+    message = "Only pharmacies can access this resource."
+    
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role != 'pharmacy':
+            return False
+        if request.user.is_suspended:
+            self.message = "Your account is suspended."
+            return False
+        return True
+
+
+class IsVerifiedPharmacy(BasePermission):
+    """Permission for verified pharmacies only"""
+    message = "Your professional account needs to be verified by admin."
+    
+    def has_permission(self, request, view):
+        if not request.user.is_authenticated:
+            return False
+        if request.user.role != 'pharmacy':
+            return False
+        if request.user.is_suspended:
+            return False
+        if not request.user.is_professional_verified:
+            return False
+        return True
+
+
+# ============================================
+# HELPER FUNCTIONS
+# ============================================
+
+def get_pharmacy_name(user):
+    """Get pharmacy display name"""
+    try:
+        return user.pharmacy_profile.name
+    except:
+        return user.email
+
+
+def check_active_session(user, patient):
+    """Check if there's an active access session for this patient"""
+    return PatientAccessToken.objects.filter(
+        patient=patient,
+        requester=user,
+        access_granted=True,
+        session_expires_at__gt=timezone.now()
+    ).exists()
+
+
+# ============================================
+# PHARMACY PROFILE
+# ============================================
 
 class PharmacyProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update pharmacy profile"""
     serializer_class = PharmacySerializer
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
     
     def get_object(self):
-        return Pharmacy.objects.get(user=self.request.user)
+        profile, _ = Pharmacy.objects.get_or_create(
+            user=self.request.user,
+            defaults={
+                'name': self.request.user.email,
+                'license_number': f"TEMP-{self.request.user.id}",
+                'address': 'Please update',
+                'city': 'Please update',
+                'state': 'Please update',
+                'zip_code': '00000',
+                'phone': self.request.user.phone or '0000000000',
+                'email': self.request.user.email
+            }
+        )
+        return profile
 
+
+class PharmacyDashboardView(views.APIView):
+    """Dashboard stats for pharmacy"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        today = date.today()
+        
+        # Prescriptions sent
+        sent_prescriptions = Prescription.objects.filter(
+            sent_by=request.user,
+            source='pharmacy'
+        )
+        
+        # Get pharmacy and inventory stats
+        try:
+            pharmacy = request.user.pharmacy_profile
+            inventory = PharmacyInventory.objects.filter(pharmacy=pharmacy)
+            low_stock_count = inventory.filter(
+                quantity_in_stock__lte=F('reorder_level'),
+                quantity_in_stock__gt=0
+            ).count()
+            
+            # Sales stats
+            today_sales = PharmacySale.objects.filter(
+                pharmacy=pharmacy,
+                created_at__date=today,
+                quantity__gt=0
+            ).count()
+        except:
+            low_stock_count = 0
+            today_sales = 0
+        
+        return Response({
+            'total_prescriptions': sent_prescriptions.count(),
+            'prescriptions_today': sent_prescriptions.filter(created_at__date=today).count(),
+            'patients_served': sent_prescriptions.values('user').distinct().count(),
+            'today_sales': today_sales,
+            'low_stock_items': low_stock_count,
+            'is_verified': request.user.is_professional_verified
+        })
+
+
+# ============================================
+# PATIENT ACCESS (OTP VERIFICATION)
+# ============================================
+
+class PharmacyCheckPatientView(views.APIView):
+    """Check if patient exists"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        
+        if not patient_email:
+            return Response(
+                {'error': 'Patient email is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+            has_active_session = check_active_session(request.user, patient)
+            
+            return Response({
+                'patient_exists': True,
+                'patient_email': patient.email,
+                'patient_name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'has_active_session': has_active_session,
+                'requires_otp': not has_active_session
+            })
+        except User.DoesNotExist:
+            return Response({
+                'patient_exists': False,
+                'patient_email': patient_email,
+                'can_create': True,
+                'message': 'Patient not found. You can create their profile.'
+            })
+
+
+class PharmacyRequestPatientAccessView(views.APIView):
+    """Pharmacy requests access to send prescription to patient"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    @transaction.atomic
+    def post(self, request):
+        serializer = RequestPatientAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        patient_email = serializer.validated_data['patient_email']
+        create_if_not_exists = serializer.validated_data.get('create_if_not_exists', False)
+        
+        # Find or create patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+            is_new_patient = False
+        except User.DoesNotExist:
+            if not create_if_not_exists:
+                return Response({
+                    'error': 'Patient not found',
+                    'patient_exists': False,
+                    'can_create': True
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Create patient
+            import secrets
+            patient = User.objects.create_user(
+                email=patient_email,
+                username=patient_email.split('@')[0] + str(timezone.now().timestamp())[-4:],
+                password=secrets.token_urlsafe(16),
+                first_name=serializer.validated_data.get('patient_first_name', ''),
+                last_name=serializer.validated_data.get('patient_last_name', ''),
+                phone=serializer.validated_data.get('patient_phone', ''),
+                role='patient'
+            )
+            HealthProfile.objects.create(user=patient)
+            is_new_patient = True
+        
+        # Check for active session
+        if check_active_session(request.user, patient):
+            return Response({
+                'message': 'Active session exists',
+                'has_active_session': True,
+                'ready_for_upload': True
+            })
+        
+        # Create access token
+        token = PatientAccessToken.create_access_request(
+            patient=patient,
+            requester=request.user,
+            purpose='add_prescription'
+        )
+        
+        pharmacy_name = get_pharmacy_name(request.user)
+        
+        # Send OTP
+        EmailService.send_patient_access_otp_email(
+            patient_email=patient.email,
+            patient_name=f"{patient.first_name} {patient.last_name}".strip() or "Patient",
+            otp_code=token.otp_code,
+            requester_name=pharmacy_name,
+            requester_role='pharmacy',
+            purpose='add_prescription',
+            is_new_patient=is_new_patient
+        )
+        
+        return Response({
+            'message': f'Verification code sent to patient at {patient_email}',
+            'patient_email': patient_email,
+            'is_new_patient': is_new_patient,
+            'expires_in_minutes': 10
+        })
+
+
+class PharmacyVerifyPatientOTPView(views.APIView):
+    """Verify OTP and get access to send prescription"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request):
+        serializer = VerifyPatientOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        patient_email = serializer.validated_data['patient_email']
+        otp_code = serializer.validated_data['otp_code']
+        
+        # Find token
+        token = PatientAccessToken.objects.filter(
+            patient__email=patient_email,
+            requester=request.user,
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not token:
+            return Response({
+                'error': 'No pending access request found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Verify OTP
+        success, message = token.verify_otp(otp_code)
+        
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        return Response({
+            'message': 'Access granted. You can now view patient history and upload prescriptions.',
+            'access_token_id': str(token.id),
+            'session_expires_at': token.session_expires_at,
+            'patient': {
+                'id': str(token.patient.id),
+                'email': token.patient.email,
+                'name': f"{token.patient.first_name} {token.patient.last_name}".strip() or token.patient.email
+            }
+        })
+
+
+class PharmacyActiveSessionsView(views.APIView):
+    """View pharmacy's active patient sessions"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        sessions = PatientAccessToken.objects.filter(
+            requester=request.user,
+            access_granted=True,
+            session_expires_at__gt=timezone.now()
+        ).select_related('patient').order_by('-access_granted_at')
+        
+        return Response({
+            'count': sessions.count(),
+            'sessions': [{
+                'id': str(s.id),
+                'patient_id': str(s.patient.id),
+                'patient_email': s.patient.email,
+                'patient_name': f"{s.patient.first_name} {s.patient.last_name}".strip() or s.patient.email,
+                'expires_at': s.session_expires_at,
+                'granted_at': s.access_granted_at
+            } for s in sessions]
+        })
+
+
+class PharmacyPatientHistoryView(views.APIView):
+    """
+    View patient's prescription and report history.
+    Requires valid access session from OTP verification.
+    """
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request, patient_id):
+        # Verify pharmacy has active access to this patient
+        access_token = PatientAccessToken.objects.filter(
+            patient_id=patient_id,
+            requester=request.user,
+            access_granted=True,
+            session_expires_at__gt=timezone.now()
+        ).first()
+        
+        if not access_token:
+            return Response({
+                'error': 'Access denied. Please verify OTP to access patient data.',
+                'requires_otp': True
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        patient = get_object_or_404(User, pk=patient_id, role='patient')
+        
+        # Get prescriptions (non-duplicate) with drugs and compliance
+        prescriptions = Prescription.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).prefetch_related(
+            'drugs',
+            'drugs__reminders',
+            'drugs__interactions'
+        ).order_by('-created_at')[:20]
+        
+        # Get lab reports (non-duplicate)
+        from prescriptions.models import LabReport
+        reports = LabReport.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).order_by('-created_at')[:20]
+        
+        # Get health profile
+        try:
+            hp = patient.health_profile
+            health_profile = {
+                'blood_type': hp.blood_type,
+                'gender': hp.gender,
+                'date_of_birth': hp.date_of_birth,
+                'age': hp.age,
+                'height_cm': hp.height_cm,
+                'weight_kg': hp.weight_kg,
+                'allergies': hp.allergies or [],
+                'medical_conditions': hp.medical_conditions or [],
+                'current_medications': hp.current_medications or [],
+                'emergency_contact_name': hp.emergency_contact_name,
+                'emergency_contact_phone': hp.emergency_contact_phone
+            }
+        except:
+            health_profile = None
+        
+        # Serialize prescriptions with detailed medication data
+        prescriptions_data = []
+        for p in prescriptions:
+            medications = []
+            for d in p.drugs.all():
+                # Get compliance data from reminders
+                doses_taken = 0
+                doses_missed = 0
+                last_taken = None
+                
+                for reminder in d.reminders.all():
+                    doses_taken += reminder.doses_taken
+                    doses_missed += reminder.doses_missed
+                    if reminder.last_taken_at:
+                        if not last_taken or reminder.last_taken_at > last_taken:
+                            last_taken = reminder.last_taken_at
+                
+                total_doses = doses_taken + doses_missed
+                adherence_rate = round((doses_taken / total_doses * 100)) if total_doses > 0 else 0
+                
+                # Get interactions
+                interactions = [{
+                    'type': i.interaction_type,
+                    'severity': i.severity,
+                    'interacting_item': i.interacting_item,
+                    'title': i.title,
+                    'description': i.description,
+                    'recommendation': i.recommendation
+                } for i in d.interactions.all()]
+                
+                medications.append({
+                    'id': str(d.id),
+                    'drug_name': d.drug_name,
+                    'generic_name': d.generic_name,
+                    'dosage': d.dosage,
+                    'frequency': d.frequency,
+                    'duration': d.duration,
+                    'quantity': d.quantity,
+                    'instructions': d.instructions,
+                    'category': d.category,
+                    'primary_use': d.primary_use,
+                    'safety_percentage': d.safety_percentage,
+                    'is_safe_to_take': d.is_safe_to_take,
+                    'requires_monitoring': d.requires_monitoring,
+                    'special_instructions': d.special_instructions,
+                    'common_side_effects': d.common_side_effects or [],
+                    'interactions': interactions,
+                    'compliance': {
+                        'doses_taken': doses_taken,
+                        'doses_missed': doses_missed,
+                        'adherence_rate': adherence_rate,
+                        'last_taken_at': last_taken,
+                        'is_active': d.reminders.filter(is_active=True).exists()
+                    }
+                })
+            
+            prescriptions_data.append({
+                'id': str(p.id),
+                'doctor_name': p.doctor_name,
+                'clinic_name': p.clinic_name,
+                'prescription_date': p.prescription_date,
+                'status': p.status,
+                'overall_safety_percentage': p.overall_safety_percentage,
+                'source': p.source,
+                'created_at': p.created_at,
+                'medications': medications
+            })
+        
+        return Response({
+            'patient': {
+                'id': str(patient.id),
+                'email': patient.email,
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email,
+                'phone': patient.phone
+            },
+            'health_profile': health_profile,
+            'prescriptions': prescriptions_data,
+            'lab_reports': [{
+                'id': str(r.id),
+                'report_type': r.report_type,
+                'report_title': r.report_title,
+                'report_date': r.report_date,
+                'laboratory_name': r.laboratory_name,
+                'status': r.status,
+                'created_at': r.created_at
+            } for r in reports],
+            'session_expires_at': access_token.session_expires_at
+        })
+
+
+# ============================================
+# PRESCRIPTION UPLOAD (WITH OTP)
+# ============================================
+
+class PharmacySendPrescriptionView(views.APIView):
+    """Pharmacy uploads prescription with OTP verification"""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        otp_code = request.data.get('otp_code')
+        file = request.FILES.get('file')
+        notes = request.data.get('notes', '')
+        send_email = request.data.get('send_email', 'true').lower() == 'true'
+        doctor_name = request.data.get('doctor_name', '')
+        clinic_name = request.data.get('clinic_name', '')
+        
+        if not patient_email:
+            return Response({'error': 'Patient email is required'}, status=400)
+        
+        if not file:
+            return Response({'error': 'Prescription file is required'}, status=400)
+        
+        # Validate file
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+        if file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type. Use JPG, PNG, or PDF'}, status=400)
+        
+        # Find patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Verify access
+        has_session = check_active_session(request.user, patient)
+        
+        if not has_session:
+            if not otp_code:
+                return Response({
+                    'error': 'OTP verification required',
+                    'requires_otp': True
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            token = PatientAccessToken.objects.filter(
+                patient=patient,
+                requester=request.user,
+                purpose='add_prescription',
+                is_used=False,
+                is_expired=False
+            ).order_by('-created_at').first()
+            
+            if not token:
+                return Response({
+                    'error': 'No pending verification found'
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            success, message = token.verify_otp(otp_code)
+            if not success:
+                return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        pharmacy_name = get_pharmacy_name(request.user)
+        
+        # Upload to Azure
+        azure_svc = AzureServices()
+        blob_name, blob_url = azure_svc.upload_prescription(file, str(patient.id))
+        
+        # Create prescription
+        prescription = Prescription.objects.create(
+            user=patient,
+            source='pharmacy',
+            sent_by=request.user,
+            doctor_name=doctor_name,
+            clinic_name=clinic_name,
+            prescription_date=date.today(),
+            image_url=blob_url,
+            blob_name=blob_name,
+            file_type='pdf' if file.content_type == 'application/pdf' else 'image',
+            status='uploaded',
+            notes=notes
+        )
+        
+        # Try OCR
+        try:
+            ocr_result = azure_svc.extract_text(blob_url)
+            prescription.ocr_raw_text = ocr_result.get('text', '')
+            prescription.ocr_confidence = ocr_result.get('confidence', 0)
+            prescription.save()
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
+        
+        # Check duplicates
+        prescription.content_hash = prescription.generate_content_hash()
+        prescription.check_and_mark_duplicate()
+        prescription.save()
+        
+        # Send email
+        if send_email and patient.receive_email_notifications:
+            EmailService.send_prescription_email(
+                prescription=prescription,
+                recipient_email=patient.email,
+                sender_name=pharmacy_name,
+                sender_type='pharmacy'
+            )
+        
+        return Response({
+            'message': 'Prescription sent to patient successfully',
+            'prescription_id': str(prescription.id),
+            'is_duplicate': prescription.is_duplicate,
+            'email_sent': send_email and patient.receive_email_notifications
+        }, status=201)
+
+
+class PharmacyAnalyzePrescriptionView(views.APIView):
+    """Analyze a prescription uploaded by pharmacy"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request, pk):
+        prescription = get_object_or_404(
+            Prescription, 
+            pk=pk,
+            sent_by=request.user,
+            source='pharmacy'
+        )
+        
+        azure_svc = AzureServices()
+        
+        # Run OCR if needed
+        if not prescription.ocr_raw_text:
+            try:
+                ocr_result = azure_svc.extract_text(prescription.image_url)
+                prescription.ocr_raw_text = ocr_result.get('text', '')
+                prescription.ocr_confidence = ocr_result.get('confidence', 0)
+                prescription.save()
+            except Exception as e:
+                logger.error(f"OCR failed: {e}")
+                return Response({'error': 'OCR extraction failed'}, status=500)
+        
+        if not prescription.ocr_raw_text:
+            return Response({
+                'error': 'Could not extract text from prescription image'
+            }, status=400)
+        
+        # Parse prescription
+        try:
+            parsed_data = azure_svc.parse_prescription(prescription.ocr_raw_text)
+        except Exception as e:
+            logger.error(f"Parsing failed: {e}")
+            parsed_data = {"medications": []}
+        
+        prescription.parsed_data = parsed_data
+        prescription.doctor_name = parsed_data.get('doctor_name', '') or prescription.doctor_name
+        prescription.clinic_name = parsed_data.get('clinic_name', '') or prescription.clinic_name
+        
+        # Create drug records
+        PrescriptionDrug.objects.filter(prescription=prescription).delete()
+        
+        for drug_data in parsed_data.get('medications', []):
+            PrescriptionDrug.objects.create(
+                prescription=prescription,
+                drug_name=drug_data.get('drug_name', 'Unknown'),
+                generic_name=drug_data.get('generic_name', ''),
+                dosage=drug_data.get('dosage', ''),
+                frequency=drug_data.get('frequency', ''),
+                duration=drug_data.get('duration', ''),
+                instructions=drug_data.get('instructions', ''),
+                category=drug_data.get('category', 'other'),
+                primary_use=drug_data.get('primary_use', ''),
+                common_side_effects=drug_data.get('side_effects', [])
+            )
+        
+        prescription.status = 'analyzed'
+        prescription.save()
+        
+        from prescriptions.serializers import PrescriptionDetailSerializer
+        return Response(PrescriptionDetailSerializer(prescription).data)
+
+
+class PharmacyPrescriptionHistoryView(views.APIView):
+    """List prescriptions sent by this pharmacy with detailed analysis"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        search = request.query_params.get('search', '')
+        status_filter = request.query_params.get('status', '')
+        
+        prescriptions = Prescription.objects.filter(
+            sent_by=request.user,
+            source='pharmacy'
+        ).select_related('user').prefetch_related(
+            'drugs', 'drugs__interactions'
+        ).order_by('-created_at')
+        
+        if search:
+            prescriptions = prescriptions.filter(
+                Q(user__email__icontains=search) |
+                Q(user__first_name__icontains=search) |
+                Q(doctor_name__icontains=search)
+            )
+        
+        if status_filter:
+            prescriptions = prescriptions.filter(status=status_filter)
+        
+        results = []
+        for p in prescriptions[:50]:
+            # Get patient allergies for context
+            patient_allergies = []
+            patient_conditions = []
+            try:
+                if p.user and hasattr(p.user, 'health_profile'):
+                    hp = p.user.health_profile
+                    patient_allergies = hp.allergies or []
+                    patient_conditions = hp.medical_conditions or []
+            except:
+                pass
+            
+            # Build detailed medication list
+            medications = []
+            total_interactions = 0
+            critical_count = 0
+            
+            for d in p.drugs.all():
+                interactions = []
+                for inter in d.interactions.all():
+                    interactions.append({
+                        'type': inter.interaction_type,
+                        'severity': inter.severity,
+                        'interacting_item': inter.interacting_item,
+                        'title': inter.title,
+                        'description': inter.description,
+                        'recommendation': inter.recommendation
+                    })
+                    total_interactions += 1
+                    if inter.severity in ['severe', 'critical']:
+                        critical_count += 1
+                
+                medications.append({
+                    'id': str(d.id),
+                    'drug_name': d.drug_name,
+                    'generic_name': d.generic_name,
+                    'dosage': d.dosage,
+                    'frequency': d.frequency,
+                    'duration': d.duration,
+                    'quantity': d.quantity,
+                    'instructions': d.instructions,
+                    'category': d.category,
+                    'primary_use': d.primary_use,
+                    'safety_percentage': d.safety_percentage,
+                    'safety_status': d.safety_status,
+                    'is_safe_to_take': d.is_safe_to_take,
+                    'requires_monitoring': d.requires_monitoring,
+                    'special_instructions': d.special_instructions,
+                    'common_side_effects': d.common_side_effects or [],
+                    'interactions': interactions
+                })
+            
+            results.append({
+                'id': str(p.id),
+                'patient_email': p.user.email if p.user else 'Unknown',
+                'patient_name': f"{p.user.first_name} {p.user.last_name}".strip() if p.user else '',
+                'patient_allergies': patient_allergies,
+                'patient_conditions': patient_conditions,
+                'doctor_name': p.doctor_name,
+                'clinic_name': p.clinic_name,
+                'prescription_date': p.prescription_date,
+                'status': p.status,
+                'drugs_count': len(medications),
+                'is_duplicate': p.is_duplicate,
+                'email_sent': p.email_sent,
+                'overall_safety_percentage': p.overall_safety_percentage,
+                'safety_status': p.safety_status,
+                'total_interactions': total_interactions,
+                'critical_warnings': critical_count,
+                'medications': medications,
+                'created_at': p.created_at
+            })
+        
+        return Response({
+            'count': len(results),
+            'prescriptions': results
+        })
+
+
+# ============================================
+# ORDER MANAGEMENT
+# ============================================
 
 class PharmacyOrderListView(generics.ListAPIView):
+    """List orders for pharmacy or patient"""
     serializer_class = PharmacyOrderSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         user = self.request.user
@@ -34,7 +793,9 @@ class PharmacyOrderListView(generics.ListAPIView):
 
 
 class PharmacyOrderDetailView(generics.RetrieveAPIView):
+    """Get order details"""
     serializer_class = PharmacyOrderSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         user = self.request.user
@@ -44,6 +805,9 @@ class PharmacyOrderDetailView(generics.RetrieveAPIView):
 
 
 class UpdateOrderStatusView(views.APIView):
+    """Update order status"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
     def patch(self, request, pk):
         try:
             order = PharmacyOrder.objects.get(pk=pk, pharmacy__user=request.user)
@@ -69,6 +833,9 @@ class UpdateOrderStatusView(views.APIView):
 
 
 class VerifyPrescriptionView(views.APIView):
+    """Verify a prescription order"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
     def post(self, request, pk):
         try:
             order = PharmacyOrder.objects.get(pk=pk, pharmacy__user=request.user)
@@ -84,48 +851,484 @@ class VerifyPrescriptionView(views.APIView):
         return Response(PharmacyOrderSerializer(order).data)
 
 
+# ============================================
+# INVENTORY
+# ============================================
+
 class InventoryListView(generics.ListCreateAPIView):
+    """List and create inventory items with filtering"""
     serializer_class = PharmacyInventorySerializer
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
     
     def get_queryset(self):
-        return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+        qs = PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
+        
+        # Filtering
+        search = self.request.query_params.get('search', '')
+        category = self.request.query_params.get('category', '')
+        status = self.request.query_params.get('status', '')  # low_stock, out_of_stock, expiring, expired
+        
+        if search:
+            qs = qs.filter(
+                Q(drug_name__icontains=search) |
+                Q(generic_name__icontains=search) |
+                Q(manufacturer__icontains=search) |
+                Q(sku__icontains=search)
+            )
+        
+        if category:
+            qs = qs.filter(category=category)
+        
+        if status == 'low_stock':
+            qs = qs.filter(quantity_in_stock__lte=F('reorder_level'), quantity_in_stock__gt=0)
+        elif status == 'out_of_stock':
+            qs = qs.filter(quantity_in_stock=0)
+        elif status == 'expiring':
+            from datetime import date, timedelta
+            qs = qs.filter(expiry_date__lte=date.today() + timedelta(days=30), expiry_date__gt=date.today())
+        elif status == 'expired':
+            from datetime import date
+            qs = qs.filter(expiry_date__lt=date.today())
+        
+        return qs.order_by('drug_name')
     
     def perform_create(self, serializer):
         pharmacy = Pharmacy.objects.get(user=self.request.user)
         serializer.save(pharmacy=pharmacy)
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        # Calculate stats
+        all_items = PharmacyInventory.objects.filter(pharmacy__user=request.user)
+        from datetime import date, timedelta
+        today = date.today()
+        
+        stats = {
+            'total_items': all_items.count(),
+            'in_stock': all_items.filter(quantity_in_stock__gt=F('reorder_level')).count(),
+            'low_stock': all_items.filter(quantity_in_stock__lte=F('reorder_level'), quantity_in_stock__gt=0).count(),
+            'out_of_stock': all_items.filter(quantity_in_stock=0).count(),
+            'expiring_soon': all_items.filter(expiry_date__lte=today + timedelta(days=30), expiry_date__gt=today).count(),
+            'expired': all_items.filter(expiry_date__lt=today).count(),
+            'total_value': sum(float(i.unit_price) * i.quantity_in_stock for i in all_items),
+            'categories': list(all_items.values('category').annotate(count=Count('id')).order_by('-count'))
+        }
+        
+        return Response({
+            'stats': stats,
+            'results': serializer.data
+        })
 
 
 class InventoryDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete inventory item"""
     serializer_class = PharmacyInventorySerializer
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
     
     def get_queryset(self):
         return PharmacyInventory.objects.filter(pharmacy__user=self.request.user)
 
 
+class InventoryRestockView(views.APIView):
+    """Restock an inventory item"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request, pk):
+        item = get_object_or_404(PharmacyInventory, pk=pk, pharmacy__user=request.user)
+        quantity = request.data.get('quantity', 0)
+        batch_number = request.data.get('batch_number', '')
+        expiry_date = request.data.get('expiry_date')
+        cost_price = request.data.get('cost_price')
+        
+        if quantity <= 0:
+            return Response({'error': 'Quantity must be positive'}, status=400)
+        
+        item.quantity_in_stock += quantity
+        item.last_restocked = timezone.now()
+        if batch_number:
+            item.batch_number = batch_number
+        if expiry_date:
+            item.expiry_date = expiry_date
+        if cost_price:
+            item.cost_price = cost_price
+        item.is_available = True
+        item.save()
+        
+        return Response({
+            'message': f'Added {quantity} units to {item.drug_name}',
+            'new_quantity': item.quantity_in_stock
+        })
+
+
+class InventoryAlertsView(views.APIView):
+    """Get inventory alerts (low stock, expiring, expired)"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        from datetime import date, timedelta
+        today = date.today()
+        
+        items = PharmacyInventory.objects.filter(pharmacy__user=request.user)
+        
+        low_stock = items.filter(
+            quantity_in_stock__lte=F('reorder_level'),
+            quantity_in_stock__gt=0
+        ).values('id', 'drug_name', 'quantity_in_stock', 'reorder_level')
+        
+        out_of_stock = items.filter(quantity_in_stock=0).values('id', 'drug_name')
+        
+        expiring_soon = items.filter(
+            expiry_date__lte=today + timedelta(days=30),
+            expiry_date__gt=today
+        ).values('id', 'drug_name', 'expiry_date', 'quantity_in_stock', 'batch_number')
+        
+        expired = items.filter(expiry_date__lt=today).values(
+            'id', 'drug_name', 'expiry_date', 'quantity_in_stock', 'batch_number'
+        )
+        
+        return Response({
+            'low_stock': list(low_stock),
+            'out_of_stock': list(out_of_stock),
+            'expiring_soon': list(expiring_soon),
+            'expired': list(expired),
+            'total_alerts': len(low_stock) + len(out_of_stock) + len(expiring_soon) + len(expired)
+        })
+
+
+class InventoryBulkUpdateView(views.APIView):
+    """Bulk update inventory quantities (for quick stock adjustments)"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def post(self, request):
+        updates = request.data.get('updates', [])  # [{id, quantity}, ...]
+        
+        updated = 0
+        for update in updates:
+            try:
+                item = PharmacyInventory.objects.get(
+                    id=update['id'],
+                    pharmacy__user=request.user
+                )
+                item.quantity_in_stock = update['quantity']
+                item.is_available = item.quantity_in_stock > 0
+                item.save()
+                updated += 1
+            except PharmacyInventory.DoesNotExist:
+                continue
+        
+        return Response({'updated': updated})
+
+
+# ============================================
+# SALES / DISPENSE VIEWS
+# ============================================
+
+class DispenseItemView(views.APIView):
+    """Dispense/sell an inventory item"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    @transaction.atomic
+    def post(self, request):
+        serializer = DispenseItemSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        
+        # Get inventory item
+        try:
+            item = PharmacyInventory.objects.get(
+                id=data['inventory_item_id'],
+                pharmacy__user=request.user
+            )
+        except PharmacyInventory.DoesNotExist:
+            return Response({'error': 'Item not found'}, status=404)
+        
+        quantity = data['quantity']
+        
+        # Check stock
+        if item.quantity_in_stock < quantity:
+            return Response({
+                'error': f'Insufficient stock. Available: {item.quantity_in_stock}'
+            }, status=400)
+        
+        # Handle return (add back to stock)
+        if data['sale_type'] == 'return':
+            item.quantity_in_stock += quantity
+            item.save()
+            
+            # Create negative sale record
+            sale = PharmacySale.objects.create(
+                pharmacy=item.pharmacy,
+                inventory_item=item,
+                drug_name=item.drug_name,
+                generic_name=item.generic_name or '',
+                quantity=-quantity,
+                unit_price=item.unit_price,
+                cost_price=item.cost_price,
+                sale_type='return',
+                customer_name=data.get('customer_name', ''),
+                customer_phone=data.get('customer_phone', ''),
+                notes=data.get('notes', ''),
+                sold_by=request.user
+            )
+            
+            return Response({
+                'message': f'Return processed: {quantity} units added back',
+                'new_quantity': item.quantity_in_stock,
+                'sale_id': str(sale.id)
+            })
+        
+        # Regular sale - reduce stock
+        item.quantity_in_stock -= quantity
+        item.is_available = item.quantity_in_stock > 0
+        item.save()
+        
+        # Get prescription if provided
+        prescription = None
+        if data.get('prescription_id'):
+            try:
+                prescription = Prescription.objects.get(id=data['prescription_id'])
+            except Prescription.DoesNotExist:
+                pass
+        
+        # Create sale record
+        sale = PharmacySale.objects.create(
+            pharmacy=item.pharmacy,
+            inventory_item=item,
+            prescription=prescription,
+            drug_name=item.drug_name,
+            generic_name=item.generic_name or '',
+            quantity=quantity,
+            unit_price=item.unit_price,
+            cost_price=item.cost_price,
+            sale_type=data['sale_type'],
+            customer_name=data.get('customer_name', ''),
+            customer_phone=data.get('customer_phone', ''),
+            notes=data.get('notes', ''),
+            sold_by=request.user
+        )
+        
+        return Response({
+            'message': f'Dispensed {quantity} units of {item.drug_name}',
+            'new_quantity': item.quantity_in_stock,
+            'sale_id': str(sale.id),
+            'total_price': float(sale.total_price)
+        })
+
+
+class SalesHistoryView(views.APIView):
+    """Get sales history with filtering"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        pharmacy = Pharmacy.objects.get(user=request.user)
+        sales = PharmacySale.objects.filter(pharmacy=pharmacy)
+        
+        # Filters
+        sale_type = request.query_params.get('type', '')
+        date_from = request.query_params.get('from', '')
+        date_to = request.query_params.get('to', '')
+        search = request.query_params.get('search', '')
+        
+        if sale_type:
+            sales = sales.filter(sale_type=sale_type)
+        if date_from:
+            sales = sales.filter(created_at__date__gte=date_from)
+        if date_to:
+            sales = sales.filter(created_at__date__lte=date_to)
+        if search:
+            sales = sales.filter(
+                Q(drug_name__icontains=search) |
+                Q(customer_name__icontains=search)
+            )
+        
+        sales = sales.order_by('-created_at')[:100]
+        
+        return Response({
+            'count': sales.count(),
+            'sales': [{
+                'id': str(s.id),
+                'drug_name': s.drug_name,
+                'generic_name': s.generic_name,
+                'quantity': s.quantity,
+                'unit_price': float(s.unit_price),
+                'total_price': float(s.total_price),
+                'profit': float(s.profit) if s.profit else None,
+                'sale_type': s.sale_type,
+                'customer_name': s.customer_name,
+                'created_at': s.created_at
+            } for s in sales]
+        })
+
+
+class SalesDashboardView(views.APIView):
+    """Get sales dashboard stats"""
+    permission_classes = [IsAuthenticated, IsPharmacyUser]
+    
+    def get(self, request):
+        from datetime import timedelta
+        pharmacy = Pharmacy.objects.get(user=request.user)
+        today = date.today()
+        
+        # Get all sales
+        all_sales = PharmacySale.objects.filter(pharmacy=pharmacy, quantity__gt=0)  # Exclude returns
+        
+        # Today's sales
+        today_sales = all_sales.filter(created_at__date=today)
+        today_revenue = today_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        today_profit = today_sales.aggregate(total=Sum('profit'))['total'] or 0
+        today_count = today_sales.count()
+        
+        # This week
+        week_start = today - timedelta(days=today.weekday())
+        week_sales = all_sales.filter(created_at__date__gte=week_start)
+        week_revenue = week_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        week_profit = week_sales.aggregate(total=Sum('profit'))['total'] or 0
+        
+        # This month
+        month_sales = all_sales.filter(
+            created_at__month=today.month,
+            created_at__year=today.year
+        )
+        month_revenue = month_sales.aggregate(total=Sum('total_price'))['total'] or 0
+        month_profit = month_sales.aggregate(total=Sum('profit'))['total'] or 0
+        
+        # Top selling items (this month)
+        top_items = month_sales.values('drug_name').annotate(
+            total_qty=Sum('quantity'),
+            total_revenue=Sum('total_price')
+        ).order_by('-total_qty')[:10]
+        
+        # Sales by type (this month)
+        by_type = month_sales.values('sale_type').annotate(
+            count=Count('id'),
+            revenue=Sum('total_price')
+        )
+        
+        # Daily sales for chart (last 7 days)
+        daily_sales = []
+        for i in range(6, -1, -1):
+            day = today - timedelta(days=i)
+            day_total = all_sales.filter(created_at__date=day).aggregate(
+                revenue=Sum('total_price'),
+                count=Count('id')
+            )
+            daily_sales.append({
+                'date': day.strftime('%Y-%m-%d'),
+                'day': day.strftime('%a'),
+                'revenue': float(day_total['revenue'] or 0),
+                'count': day_total['count'] or 0
+            })
+        
+        # Recent sales
+        recent = all_sales.order_by('-created_at')[:10]
+        recent_sales = [{
+            'id': str(s.id),
+            'drug_name': s.drug_name,
+            'quantity': s.quantity,
+            'total_price': float(s.total_price),
+            'sale_type': s.sale_type,
+            'created_at': s.created_at
+        } for s in recent]
+        
+        return Response({
+            'today': {
+                'revenue': float(today_revenue),
+                'profit': float(today_profit),
+                'count': today_count
+            },
+            'week': {
+                'revenue': float(week_revenue),
+                'profit': float(week_profit)
+            },
+            'month': {
+                'revenue': float(month_revenue),
+                'profit': float(month_profit)
+            },
+            'top_items': list(top_items),
+            'by_type': list(by_type),
+            'daily_sales': daily_sales,
+            'recent_sales': recent_sales
+        })
+
+
+# ============================================
+# PUBLIC PHARMACY VIEWS
+# ============================================
+
 class NearbyPharmaciesView(generics.ListAPIView):
+    """Find nearby pharmacies by location"""
     serializer_class = PharmacySerializer
-    permission_classes = []
+    permission_classes = [AllowAny]
+    authentication_classes = []  # No authentication required
     
     def get_queryset(self):
-        lat = float(self.request.query_params.get('lat', 0))
-        lng = float(self.request.query_params.get('lng', 0))
+        lat = self.request.query_params.get('lat')
+        lng = self.request.query_params.get('lng')
         radius_km = float(self.request.query_params.get('radius', 10))
         
-        return Pharmacy.objects.filter(
+        if not lat or not lng:
+            return Pharmacy.objects.none()
+        
+        try:
+            lat = float(lat)
+            lng = float(lng)
+        except (ValueError, TypeError):
+            return Pharmacy.objects.none()
+        
+        # Get all active verified pharmacies with location (check both profile and user verification)
+        pharmacies = Pharmacy.objects.filter(
             is_active=True,
             is_verified=True,
-            latitude__isnull=False
-        ).annotate(
-            distance_km=6371 * ACos(
-                Cos(Radians(lat)) * Cos(Radians('latitude')) *
-                Cos(Radians('longitude') - Radians(lng)) +
-                Sin(Radians(lat)) * Sin(Radians('latitude'))
-            )
-        ).filter(distance_km__lte=radius_km).order_by('distance_km')
+            user__is_professional_verified=True,
+            latitude__isnull=False,
+            longitude__isnull=False
+        ).select_related('user')
+        
+        # Calculate distance in Python to avoid DecimalField/FloatField issues
+        from math import radians, sin, cos, sqrt, atan2
+        
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371  # Earth's radius in km
+            lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, float(lat2), float(lon2)])
+            dlat = lat2 - lat1
+            dlon = lon2 - lon1
+            a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+            c = 2 * atan2(sqrt(a), sqrt(1-a))
+            return R * c
+        
+        # Filter and sort by distance
+        nearby = []
+        for pharmacy in pharmacies:
+            distance = haversine(lat, lng, pharmacy.latitude, pharmacy.longitude)
+            if distance <= radius_km:
+                pharmacy.distance_km = round(distance, 2)
+                nearby.append(pharmacy)
+        
+        # Sort by distance
+        nearby.sort(key=lambda x: x.distance_km)
+        
+        return nearby
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        
+        # Manual serialization to include distance
+        data = []
+        for pharmacy in queryset[:50]:  # Limit to 50 results
+            serializer = self.get_serializer(pharmacy)
+            pharmacy_data = serializer.data
+            pharmacy_data['distance_km'] = getattr(pharmacy, 'distance_km', None)
+            data.append(pharmacy_data)
+        
+        return Response(data)
 
 
 class PharmacyReviewView(generics.ListCreateAPIView):
+    """List and create pharmacy reviews"""
     serializer_class = PharmacyReviewSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return PharmacyReview.objects.filter(pharmacy_id=self.kwargs['pk'])
@@ -134,14 +1337,20 @@ class PharmacyReviewView(generics.ListCreateAPIView):
         pharmacy = Pharmacy.objects.get(pk=self.kwargs['pk'])
         review = serializer.save(user=self.request.user, pharmacy=pharmacy)
         
-        avg_rating = PharmacyReview.objects.filter(pharmacy=pharmacy).aggregate(avg=Avg('rating'), count=Count('id'))
+        # Update pharmacy rating
+        avg_rating = PharmacyReview.objects.filter(pharmacy=pharmacy).aggregate(
+            avg=Avg('rating'), 
+            count=Count('id')
+        )
         pharmacy.rating = avg_rating['avg'] or 0
         pharmacy.total_reviews = avg_rating['count']
         pharmacy.save()
 
 
 class ChatView(generics.ListCreateAPIView):
+    """Chat messages for order"""
     serializer_class = ChatMessageSerializer
+    permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
         return ChatMessage.objects.filter(order_id=self.kwargs['order_id'])
@@ -149,3 +1358,777 @@ class ChatView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         order = PharmacyOrder.objects.get(pk=self.kwargs['order_id'])
         serializer.save(order=order, sender=self.request.user)
+
+
+# ============================================
+# PRESCRIPTION ORDER VIEWS (Patient-initiated)
+# ============================================
+
+class PatientPrescriptionOrderCreateView(views.APIView):
+    """Patient creates a prescription order to send to pharmacy"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        serializer = PrescriptionOrderCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        
+        # Get prescription
+        try:
+            prescription = Prescription.objects.get(
+                id=data['prescription_id'],
+                user=request.user
+            )
+        except Prescription.DoesNotExist:
+            return Response({'error': 'Prescription not found'}, status=404)
+        
+        # Get pharmacy
+        try:
+            pharmacy = Pharmacy.objects.get(
+                id=data['pharmacy_id'],
+                is_verified=True
+            )
+        except Pharmacy.DoesNotExist:
+            return Response({'error': 'Pharmacy not found'}, status=404)
+        
+        # Create order
+        order = PrescriptionOrder.objects.create(
+            prescription=prescription,
+            patient=request.user,
+            pharmacy=pharmacy,
+            selected_medications=data['selected_medications'],
+            patient_notes=data.get('patient_notes', ''),
+            status='sent_to_pharmacy'
+        )
+        
+        # Build medication list HTML
+        medications = data['selected_medications']
+        med_list_html = "<ul style='list-style-type: disc; padding-left: 20px;'>"
+        for med in medications:
+            med_name = med.get('name', 'Unknown')
+            med_dosage = med.get('dosage', '')
+            med_qty = med.get('quantity', 1)
+            med_list_html += f"<li><strong>{med_name}</strong>"
+            if med_dosage:
+                med_list_html += f" - {med_dosage}"
+            med_list_html += f" (Qty: {med_qty})</li>"
+        med_list_html += "</ul>"
+        
+        # Send notification to pharmacy with full medication details
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            AzureEmailService.send_email(
+                to_email=pharmacy.email,
+                subject=f"📋 New Prescription Order: {order.order_number}",
+                html_content=f"""
+                <h2>New Prescription Order</h2>
+                <p>You have received a new prescription order.</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.get_full_name() or request.user.email}</td>
+                    </tr>
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Email:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.email}</td>
+                    </tr>
+                </table>
+                
+                <h3>Requested Medications ({len(medications)} items):</h3>
+                {med_list_html}
+                
+                {f'<h3>Patient Notes:</h3><p style="background: #fff3cd; padding: 10px; border-radius: 5px;">{data.get("patient_notes", "")}</p>' if data.get('patient_notes') else ''}
+                
+                <p style="margin-top: 20px;">Please log in to MedBuddy to review and provide a quote.</p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify pharmacy: {e}")
+        
+        # Send confirmation email to patient
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            AzureEmailService.send_email(
+                to_email=request.user.email,
+                subject=f"✅ Order Confirmed: {order.order_number}",
+                html_content=f"""
+                <h2>Your Prescription Order Has Been Submitted</h2>
+                <p>Thank you for your order! Here are your order details:</p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #e3f2fd;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                    </tr>
+                    <tr style="background: #f5f5f5;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Address:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.address}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">Sent to Pharmacy</td>
+                    </tr>
+                </table>
+                
+                <h3>Medications Ordered ({len(medications)} items):</h3>
+                {med_list_html}
+                
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <h4 style="margin-top: 0; color: #2e7d32;">What's Next?</h4>
+                    <ol>
+                        <li>The pharmacy will review your prescription</li>
+                        <li>You'll receive a quote with pricing</li>
+                        <li>Accept or decline the quote</li>
+                        <li>Pick up your medications when ready</li>
+                    </ol>
+                </div>
+                
+                <p>You can track your order status in the MedBuddy app.</p>
+                <p>If you have any questions, please contact {pharmacy.name} at {pharmacy.phone}.</p>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to send confirmation to patient: {e}")
+        
+        return Response({
+            'message': 'Order created successfully',
+            'order': PrescriptionOrderSerializer(order).data
+        }, status=201)
+
+
+class PatientPrescriptionOrderListView(generics.ListAPIView):
+    """List patient's prescription orders"""
+    serializer_class = PrescriptionOrderListSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return PrescriptionOrder.objects.filter(
+            patient=self.request.user
+        ).select_related('pharmacy', 'prescription').order_by('-created_at')
+
+
+class PatientPrescriptionOrderDetailView(views.APIView):
+    """Get prescription order detail and accept/reject quote"""
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.select_related(
+                'pharmacy', 'prescription'
+            ).get(id=order_id, patient=request.user)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        return Response(PrescriptionOrderSerializer(order).data)
+    
+    def post(self, request, order_id):
+        """Accept or reject pharmacy quote"""
+        try:
+            order = PrescriptionOrder.objects.get(id=order_id, patient=request.user)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        action = request.data.get('action')
+        
+        if action == 'accept':
+            if order.status != 'pharmacy_quoted':
+                return Response({'error': 'Cannot accept - order is not quoted'}, status=400)
+            
+            order.status = 'patient_accepted'
+            order.accepted_at = timezone.now()
+            order.save()
+            
+            # Build medication list HTML
+            medications = order.selected_medications or []
+            med_list_html = ""
+            if medications:
+                med_list_html = "<h3>Medications to Prepare:</h3><ul style='list-style-type: disc; padding-left: 20px;'>"
+                for med in medications:
+                    if isinstance(med, dict):
+                        med_name = med.get('name', 'Unknown')
+                        med_dosage = med.get('dosage', '')
+                        med_qty = med.get('quantity', 1)
+                        med_list_html += f"<li><strong>{med_name}</strong>"
+                        if med_dosage:
+                            med_list_html += f" - {med_dosage}"
+                        med_list_html += f" (Qty: {med_qty})</li>"
+                med_list_html += "</ul>"
+            
+            # Notify pharmacy with full details
+            try:
+                from prescriptions.azure_email_service import AzureEmailService
+                pharmacy = order.pharmacy
+                patient = request.user
+                
+                AzureEmailService.send_email(
+                    to_email=pharmacy.email,
+                    subject=f"✅ Quote Accepted: Order {order.order_number}",
+                    html_content=f"""
+                    <h2>🎉 Quote Accepted!</h2>
+                    <p>Great news! The patient has accepted your quote. Please prepare the order.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{patient.get_full_name() or patient.email}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Patient Email:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{patient.email}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Quoted Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Accepted At:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.accepted_at.strftime('%B %d, %Y at %I:%M %p')}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <h4 style="margin-top: 0;">⚡ Action Required</h4>
+                        <ol style="margin-bottom: 0;">
+                            <li>Log in to MedBuddy</li>
+                            <li>Click "Mark Preparing" to start</li>
+                            <li>Prepare the medications</li>
+                            <li>Click "Mark Ready" when done</li>
+                        </ol>
+                    </div>
+                    
+                    {f'<p><strong>Patient Notes:</strong> {order.patient_notes}</p>' if order.patient_notes else ''}
+                    """
+                )
+                
+                # Also notify patient of acceptance confirmation
+                AzureEmailService.send_email(
+                    to_email=patient.email,
+                    subject=f"✅ Order Confirmed: {order.order_number}",
+                    html_content=f"""
+                    <h2>Your Order is Confirmed!</h2>
+                    <p>You have accepted the quote from {pharmacy.name}. They will now prepare your prescription.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd; color: #4caf50;"><strong>Accepted - Awaiting Preparation</strong></td>
+                        </tr>
+                    </table>
+                    
+                    <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <h4 style="margin-top: 0; color: #2e7d32;">📍 Pickup Location</h4>
+                        <p style="font-size: 16px; margin: 5px 0;"><strong>{pharmacy.name}</strong></p>
+                        <p style="margin: 5px 0;">{pharmacy.address}</p>
+                        <p style="margin: 5px 0;">📞 {pharmacy.phone}</p>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px;">
+                        <p style="margin: 0;"><strong>What happens next?</strong></p>
+                        <p style="margin: 10px 0 0 0;">We'll email you when your order is ready for pickup!</p>
+                    </div>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify pharmacy: {e}")
+            
+            return Response({
+                'message': 'Quote accepted',
+                'order': PrescriptionOrderSerializer(order).data
+            })
+        
+        elif action == 'reject':
+            order.status = 'cancelled'
+            order.save()
+            
+            # Notify pharmacy of rejection
+            try:
+                from prescriptions.azure_email_service import AzureEmailService
+                AzureEmailService.send_email(
+                    to_email=order.pharmacy.email,
+                    subject=f"❌ Quote Declined: Order {order.order_number}",
+                    html_content=f"""
+                    <h2>Quote Declined</h2>
+                    <p>The patient has declined your quote for order {order.order_number}.</p>
+                    <p><strong>Order Number:</strong> {order.order_number}</p>
+                    <p><strong>Patient:</strong> {request.user.email}</p>
+                    <p><strong>Quoted Amount:</strong> ${order.quoted_amount}</p>
+                    <p>No further action is required.</p>
+                    """
+                )
+            except Exception as e:
+                logger.error(f"Failed to notify pharmacy: {e}")
+            
+            return Response({
+                'message': 'Order cancelled',
+                'order': PrescriptionOrderSerializer(order).data
+            })
+        
+        return Response({'error': 'Invalid action'}, status=400)
+
+
+class PharmacyPrescriptionOrderListView(generics.ListAPIView):
+    """List prescription orders for pharmacy"""
+    serializer_class = PrescriptionOrderListSerializer
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def get_queryset(self):
+        pharmacy = self.request.user.pharmacy_profile
+        status_filter = self.request.query_params.get('status')
+        
+        queryset = PrescriptionOrder.objects.filter(
+            pharmacy=pharmacy
+        ).select_related('patient', 'prescription').order_by('-created_at')
+        
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        return queryset
+
+
+class PharmacyPrescriptionOrderDetailView(views.APIView):
+    """Pharmacy views and updates prescription order"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def get(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.select_related(
+                'patient', 'prescription'
+            ).get(id=order_id, pharmacy=request.user.pharmacy_profile)
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        return Response(PrescriptionOrderSerializer(order).data)
+
+
+class PharmacyProvideQuoteView(views.APIView):
+    """Pharmacy provides quote for prescription order"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.get(
+                id=order_id,
+                pharmacy=request.user.pharmacy_profile
+            )
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        if order.status not in ['sent_to_pharmacy', 'pending']:
+            return Response({'error': 'Cannot provide quote for this order'}, status=400)
+        
+        serializer = PrescriptionOrderQuoteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        
+        order.quoted_amount = data['quoted_amount']
+        order.quote_details = data.get('quote_details')
+        order.pharmacy_notes = data.get('pharmacy_notes', '')
+        order.estimated_ready_time = data.get('estimated_ready_time')
+        order.status = 'pharmacy_quoted'
+        order.quoted_at = timezone.now()
+        
+        # Set quote valid for 24 hours
+        from datetime import timedelta
+        order.quote_valid_until = timezone.now() + timedelta(hours=24)
+        order.save()
+        
+        # Notify patient with detailed quote information
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            
+            # Build medication availability HTML if available in quote_details
+            med_availability_html = ""
+            quote_details = data.get('quote_details', {})
+            if quote_details and quote_details.get('medications'):
+                med_availability_html = "<h3>Medication Availability:</h3><ul style='list-style-type: none; padding: 0;'>"
+                for med in quote_details['medications']:
+                    med_name = med.get('name', 'Unknown')
+                    requested = med.get('requested', 1)
+                    available = med.get('available', True)
+                    available_qty = med.get('availableQty', requested)
+                    note = med.get('note', '')
+                    
+                    if not available:
+                        status_color = "#dc3545"
+                        status_text = "❌ Not Available"
+                    elif available_qty < requested:
+                        status_color = "#ffc107"
+                        status_text = f"⚠️ Partial ({available_qty}/{requested} available)"
+                    else:
+                        status_color = "#28a745"
+                        status_text = "✅ In Stock"
+                    
+                    med_availability_html += f"""
+                    <li style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-left: 4px solid {status_color}; border-radius: 4px;">
+                        <strong>{med_name}</strong> - {status_text}
+                        {f'<br><em style="color: #666;">{note}</em>' if note else ''}
+                    </li>
+                    """
+                med_availability_html += "</ul>"
+            
+            AzureEmailService.send_email(
+                to_email=order.patient.email,
+                subject=f"💰 Quote Ready: Order {order.order_number}",
+                html_content=f"""
+                <h2>Your Prescription Quote is Ready</h2>
+                <p>{request.user.pharmacy_profile.name} has provided a quote for your prescription order.</p>
+                
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                    <tr style="background: #e3f2fd;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd;">{request.user.pharmacy_profile.name}</td>
+                    </tr>
+                    <tr style="background: #c8e6c9;">
+                        <td style="padding: 10px; border: 1px solid #ddd;"><strong>Quoted Amount:</strong></td>
+                        <td style="padding: 10px; border: 1px solid #ddd; font-size: 18px;"><strong>${order.quoted_amount}</strong></td>
+                    </tr>
+                </table>
+                
+                {med_availability_html}
+                
+                {f'<div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>Pharmacy Notes:</strong><br>{order.pharmacy_notes}</div>' if order.pharmacy_notes else ''}
+                
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: center;">
+                    <p style="margin: 0; font-weight: bold;">Please log in to MedBuddy to accept or decline this quote.</p>
+                    <p style="margin: 10px 0 0 0; color: #666;"><em>This quote is valid for 24 hours.</em></p>
+                </div>
+                """
+            )
+        except Exception as e:
+            logger.error(f"Failed to notify patient: {e}")
+        
+        return Response({
+            'message': 'Quote provided',
+            'order': PrescriptionOrderSerializer(order).data
+        })
+
+
+class PharmacyUpdateOrderStatusView(views.APIView):
+    """Pharmacy updates prescription order status"""
+    permission_classes = [IsAuthenticated, IsVerifiedPharmacy]
+    
+    def post(self, request, order_id):
+        return self._update_status(request, order_id)
+    
+    def patch(self, request, order_id):
+        """Support PATCH method as alias to POST"""
+        return self._update_status(request, order_id)
+    
+    def _update_status(self, request, order_id):
+        try:
+            order = PrescriptionOrder.objects.get(
+                id=order_id,
+                pharmacy=request.user.pharmacy_profile
+            )
+        except PrescriptionOrder.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=404)
+        
+        serializer = PrescriptionOrderStatusUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
+        data = serializer.validated_data
+        new_status = data['status']
+        
+        # Validate status transitions
+        valid_transitions = {
+            'sent_to_pharmacy': ['rejected', 'cancelled'],  # Can reject new orders
+            'patient_accepted': ['preparing', 'cancelled'],
+            'preparing': ['ready_for_pickup', 'cancelled'],
+            'ready_for_pickup': ['completed'],
+        }
+        
+        if order.status not in valid_transitions or new_status not in valid_transitions.get(order.status, []):
+            if new_status not in ['rejected', 'cancelled']:
+                return Response({
+                    'error': f'Cannot transition from {order.status} to {new_status}'
+                }, status=400)
+        
+        old_status = order.status
+        order.status = new_status
+        if data.get('pharmacy_notes'):
+            order.pharmacy_notes = data['pharmacy_notes']
+        if data.get('estimated_ready_time'):
+            order.estimated_ready_time = data['estimated_ready_time']
+        
+        if new_status == 'ready_for_pickup':
+            order.ready_at = timezone.now()
+        elif new_status == 'completed':
+            order.completed_at = timezone.now()
+        
+        order.save()
+        
+        # Build medication list HTML for emails
+        medications = order.selected_medications or []
+        med_list_html = ""
+        if medications:
+            med_list_html = "<h3>Medications:</h3><ul style='list-style-type: disc; padding-left: 20px;'>"
+            for med in medications:
+                if isinstance(med, dict):
+                    med_name = med.get('name', 'Unknown')
+                    med_dosage = med.get('dosage', '')
+                    med_qty = med.get('quantity', 1)
+                    med_list_html += f"<li><strong>{med_name}</strong>"
+                    if med_dosage:
+                        med_list_html += f" - {med_dosage}"
+                    med_list_html += f" (Qty: {med_qty})</li>"
+            med_list_html += "</ul>"
+        
+        # Send detailed email notifications
+        pharmacy = request.user.pharmacy_profile
+        try:
+            from prescriptions.azure_email_service import AzureEmailService
+            
+            if new_status == 'preparing':
+                # Email to patient: Order is being prepared
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"⚙️ Order Being Prepared: {order.order_number}",
+                    html_content=f"""
+                    <h2>Your Order is Being Prepared</h2>
+                    <p>Great news! {pharmacy.name} has started preparing your prescription order.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #e3f2fd;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Address:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.address}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Status:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd; color: #9c27b0;"><strong>Preparing</strong></td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>📍 What's Next?</strong></p>
+                        <p style="margin: 10px 0 0 0;">We'll notify you when your order is ready for pickup at {pharmacy.name}.</p>
+                    </div>
+                    
+                    {f'<p><strong>Pharmacy Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                    """
+                )
+            
+            elif new_status == 'ready_for_pickup':
+                # Email to patient: Ready for pickup
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"✅ Ready for Pickup: {order.order_number}",
+                    html_content=f"""
+                    <h2>🎉 Your Prescription is Ready!</h2>
+                    <p>Your prescription order is ready for pickup at {pharmacy.name}.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>{order.order_number}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Amount:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #4caf50;">
+                        <h3 style="margin-top: 0; color: #2e7d32;">📍 Pickup Location</h3>
+                        <p style="font-size: 16px; margin: 5px 0;"><strong>{pharmacy.name}</strong></p>
+                        <p style="margin: 5px 0;">{pharmacy.address}</p>
+                        <p style="margin: 5px 0;">📞 {pharmacy.phone}</p>
+                    </div>
+                    
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px;">
+                        <p style="margin: 0;"><strong>💡 Remember to bring:</strong></p>
+                        <ul style="margin: 10px 0 0 0;">
+                            <li>Your ID</li>
+                            <li>Order number: {order.order_number}</li>
+                            <li>Payment if not already processed</li>
+                        </ul>
+                    </div>
+                    
+                    {f'<p style="margin-top: 20px;"><strong>Notes:</strong> {order.pharmacy_notes}</p>' if order.pharmacy_notes else ''}
+                    """
+                )
+            
+            elif new_status == 'completed':
+                # Email to patient: Order completed
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"🎉 Order Complete: {order.order_number}",
+                    html_content=f"""
+                    <h2>Thank You for Your Order!</h2>
+                    <p>Your prescription order has been completed.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr style="background: #c8e6c9;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Total Paid:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>${order.quoted_amount}</strong></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Completed:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.completed_at.strftime('%B %d, %Y at %I:%M %p') if order.completed_at else 'Just now'}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;">💊 <strong>Medication Reminder:</strong> Take your medications as prescribed by your doctor. If you have any questions about dosage or side effects, consult your pharmacist or healthcare provider.</p>
+                    </div>
+                    
+                    <p>Thank you for choosing {pharmacy.name}!</p>
+                    """
+                )
+            
+            elif new_status in ['cancelled', 'rejected']:
+                # Email to patient: Order cancelled/rejected
+                reason = "cancelled" if new_status == 'cancelled' else "rejected by the pharmacy"
+                AzureEmailService.send_email(
+                    to_email=order.patient.email,
+                    subject=f"❌ Order {new_status.title()}: {order.order_number}",
+                    html_content=f"""
+                    <h2>Order {new_status.title()}</h2>
+                    <p>We're sorry, but your prescription order has been {reason}.</p>
+                    
+                    <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                        <tr>
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Order Number:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{order.order_number}</td>
+                        </tr>
+                        <tr style="background: #f5f5f5;">
+                            <td style="padding: 10px; border: 1px solid #ddd;"><strong>Pharmacy:</strong></td>
+                            <td style="padding: 10px; border: 1px solid #ddd;">{pharmacy.name}</td>
+                        </tr>
+                    </table>
+                    
+                    {med_list_html}
+                    
+                    {f'<div style="background: #ffebee; padding: 15px; border-radius: 8px; margin: 15px 0;"><strong>Reason:</strong> {order.pharmacy_notes}</div>' if order.pharmacy_notes else ''}
+                    
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                        <p style="margin: 0;"><strong>What can you do?</strong></p>
+                        <ul style="margin: 10px 0 0 0;">
+                            <li>Try ordering from a different pharmacy</li>
+                            <li>Contact {pharmacy.name} for more information: {pharmacy.phone}</li>
+                            <li>Check medication availability before reordering</li>
+                        </ul>
+                    </div>
+                    """
+                )
+        except Exception as e:
+            logger.error(f"Failed to notify patient: {e}")
+        
+        return Response({
+            'message': f'Order status updated to {new_status}',
+            'order': PrescriptionOrderSerializer(order).data
+        })
+
+
+class RegisteredPharmaciesView(generics.ListAPIView):
+    """List all registered and verified pharmacies"""
+    serializer_class = PharmacySerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        # Get all active verified pharmacies
+        return Pharmacy.objects.filter(
+            is_active=True,
+            is_verified=True,
+            user__is_professional_verified=True
+        ).select_related('user').order_by('name')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        
+        # Manual serialization
+        data = []
+        for pharmacy in queryset[:100]:  # Limit to 100 results
+            serializer = self.get_serializer(pharmacy)
+            pharmacy_data = serializer.data
+            data.append(pharmacy_data)
+        
+        return Response(data)
+
+class TestEmailView(views.APIView):
+    """Test email delivery - for debugging only"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        from prescriptions.azure_email_service import AzureEmailService
+        
+        test_email = request.data.get('email', request.user.email)
+        
+        try:
+            result = AzureEmailService.send_email(
+                to_email=test_email,
+                subject="🧪 MedBuddy Test Email",
+                html_content=f"""
+                <h2>Test Email Successful!</h2>
+                <p>If you're reading this, email delivery is working.</p>
+                <p><strong>Sent at:</strong> {timezone.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <p><strong>To:</strong> {test_email}</p>
+                <p>Check your spam folder if you don't see MedBuddy emails in your inbox.</p>
+                """
+            )
+            return Response({
+                'success': True,
+                'message': f'Test email sent to {test_email}',
+                'check_spam': True
+            })
+        except Exception as e:
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=500)

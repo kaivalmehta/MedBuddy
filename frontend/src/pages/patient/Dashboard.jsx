@@ -10,8 +10,9 @@ import { differenceInMinutes, parseISO, isToday, format } from 'date-fns'
 import {
   Pill, AlertTriangle, Clock, Upload, CheckCircle2,
   FileText, ArrowRight, Calendar, Shield, Activity,
-  Bell, XCircle, Timer, SkipForward
+  Bell, XCircle, Timer, SkipForward, Loader2, MapPin
 } from 'lucide-react'
+import usePageTranslation from '../../hooks/usePageTranslation'
 
 // Dose status types (same as Reminders page)
 const DOSE_STATUS = {
@@ -25,6 +26,7 @@ const DOSE_STATUS = {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const { t, isTranslating } = usePageTranslation()
   const [currentTime, setCurrentTime] = useState(new Date())
 
   // Update time every minute
@@ -33,17 +35,39 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [])
 
-  // Fetch dashboard data
+  // Fetch dashboard data (graceful failure)
+  const accessToken = localStorage.getItem('accessToken')
+  
   const { data: dashboardData, isLoading: dashboardLoading } = useQuery({
     queryKey: ['patientDashboard'],
-    queryFn: () => analyticsService.getPatientDashboard().then(r => r.data)
+    queryFn: async () => {
+      try {
+        const r = await analyticsService.getPatientDashboard()
+        return r.data
+      } catch (err) {
+        console.warn('Dashboard endpoint not available:', err.message)
+        return {} // Return empty object on failure
+      }
+    },
+    retry: false,
+    enabled: !!user && !!accessToken // Only fetch if user and token exist
   })
 
-  // Fetch reminders for real-time status
+  // Fetch reminders for real-time status (graceful failure)
   const { data: remindersData, isLoading: remindersLoading } = useQuery({
     queryKey: ['reminders'],
-    queryFn: () => reminderService.list().then(r => r.data),
-    refetchInterval: 60000
+    queryFn: async () => {
+      try {
+        const r = await reminderService.list()
+        return r.data
+      } catch (err) {
+        console.warn('Reminders endpoint not available:', err.message)
+        return { results: [] } // Return empty results on failure
+      }
+    },
+    refetchInterval: 60000,
+    retry: false,
+    enabled: !!user && !!accessToken // Only fetch if user and token exist
   })
 
   // Process reminders with real-time status
@@ -96,18 +120,19 @@ export default function Dashboard() {
         
         <div className="relative z-10">
           <h1 className="text-2xl md:text-3xl font-display font-bold mb-2">
-            Good {getGreeting()}, {user?.first_name || 'there'}! 👋
+            {t(getGreetingKey())}, {user?.first_name || 'there'}! 👋
+            {isTranslating && <Loader2 className="w-5 h-5 inline ml-2 animate-spin" />}
           </h1>
-          <p className="text-white/80 mb-6">Here's your health summary for today</p>
+          <p className="text-white/80 mb-6">{t('health_summary')}</p>
           
           <div className="flex flex-wrap gap-4">
             <Link to="/upload" className="inline-flex items-center gap-2 bg-white text-primary-600 px-5 py-2.5 rounded-xl font-medium hover:bg-white/90 transition-colors">
               <Upload className="w-5 h-5" />
-              Upload Prescription
+              {t('upload_prescription')}
             </Link>
             <Link to="/reminders" className="inline-flex items-center gap-2 bg-white/20 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-white/30 transition-colors">
               <Clock className="w-5 h-5" />
-              View Reminders
+              {t('view_reminders')}
             </Link>
           </div>
         </div>
@@ -148,21 +173,21 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         <StatCard
           icon={Pill}
-          label="Active Medications"
+          label={t('active_medications')}
           value={doseStats.total}
           color="primary"
           delay={0.1}
         />
         <StatCard
           icon={CheckCircle2}
-          label="Taken Today"
+          label={t('taken_today')}
           value={`${doseStats.taken}/${doseStats.total}`}
           color="success"
           delay={0.2}
         />
         <StatCard
           icon={AlertTriangle}
-          label="Overdue"
+          label={t('overdue')}
           value={doseStats.overdue}
           color={doseStats.overdue > 0 ? 'danger' : 'success'}
           pulse={doseStats.overdue > 0}
@@ -170,7 +195,7 @@ export default function Dashboard() {
         />
         <StatCard
           icon={Clock}
-          label="Pending Orders"
+          label={t('pending_orders')}
           value={d.pending_orders || 0}
           color="secondary"
           delay={0.4}
@@ -187,9 +212,9 @@ export default function Dashboard() {
           className="card"
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-display font-semibold text-secondary-800">Today's Doses</h2>
+            <h2 className="text-lg font-display font-semibold text-secondary-800">{t('todays_doses')}</h2>
             <Link to="/reminders" className="text-primary-600 text-sm font-medium hover:text-primary-700 flex items-center gap-1">
-              View all <ArrowRight className="w-4 h-4" />
+              {t('view_all')} <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
           
@@ -294,9 +319,9 @@ export default function Dashboard() {
           className="card"
         >
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-display font-semibold text-secondary-800">Recent Prescriptions</h2>
+            <h2 className="text-lg font-display font-semibold text-secondary-800">{t('recent_prescriptions')}</h2>
             <Link to="/prescriptions" className="text-primary-600 text-sm font-medium hover:text-primary-700 flex items-center gap-1">
-              View all <ArrowRight className="w-4 h-4" />
+              {t('view_all')} <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
 
@@ -305,39 +330,69 @@ export default function Dashboard() {
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FileText className="w-8 h-8 text-gray-400" />
               </div>
-              <p className="text-secondary-500">No prescriptions yet</p>
+              <p className="text-secondary-500">{t('no_prescriptions')}</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {d.recent_prescriptions.slice(0, 4).map((rx, idx) => (
-                <Link
-                  key={rx.id}
-                  to={`/prescriptions/${rx.id}`}
-                  className="flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors group"
-                >
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    rx.safety_score >= 7 ? 'bg-success-500/10' : 
-                    rx.safety_score >= 4 ? 'bg-warning-500/10' : 'bg-danger-500/10'
-                  }`}>
-                    <Shield className={`w-5 h-5 ${
-                      rx.safety_score >= 7 ? 'text-success-500' :
-                      rx.safety_score >= 4 ? 'text-warning-500' : 'text-danger-500'
-                    }`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-secondary-800 truncate">
-                      {rx.doctor || 'Prescription'}
-                    </p>
-                    <p className="text-sm text-secondary-500">{formatDate(rx.date)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`badge ${getStatusBadge(rx.status)}`}>
-                      {rx.status}
-                    </span>
-                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors" />
-                  </div>
-                </Link>
-              ))}
+              {d.recent_prescriptions.slice(0, 4).map((rx, idx) => {
+                // Determine what to show as the title
+                const hasDoctor = rx.doctor && rx.doctor.trim() !== ''
+                const hasClinic = rx.clinic && rx.clinic.trim() !== ''
+                const title = hasDoctor ? rx.doctor : (hasClinic ? rx.clinic : 'Prescription')
+                const subtitle = hasDoctor && hasClinic ? rx.clinic : null
+                
+                return (
+                  <Link
+                    key={rx.id}
+                    to={`/prescriptions/${rx.id}`}
+                    className="flex items-center gap-4 p-4 rounded-xl hover:bg-gray-50 transition-colors group border border-gray-100"
+                  >
+                    {/* Prescription Image or Icon */}
+                    <div className="w-14 h-14 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {rx.image_url ? (
+                        <img src={rx.image_url} alt="Prescription" className="w-full h-full object-cover" />
+                      ) : (
+                        <FileText className="w-6 h-6 text-gray-400" />
+                      )}
+                    </div>
+                    
+                    {/* Prescription Details */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-secondary-800 truncate">
+                          {title}
+                        </p>
+                        {rx.safety_score !== null && rx.safety_score < 7 && (
+                          <AlertTriangle className="w-4 h-4 text-warning-500 flex-shrink-0" />
+                        )}
+                      </div>
+                      {subtitle && (
+                        <p className="text-sm text-secondary-500 truncate">{subtitle}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-secondary-400">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {formatDate(rx.date)}
+                        </span>
+                        {rx.drugs_count > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Pill className="w-3 h-3" />
+                            {rx.drugs_count} {rx.drugs_count === 1 ? 'med' : 'meds'}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Status Badge */}
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`badge ${getStatusBadge(rx.status)}`}>
+                        {rx.status}
+                      </span>
+                      <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-primary-500 transition-colors" />
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </motion.div>
@@ -353,7 +408,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <QuickAction to="/upload" icon={Upload} label="Upload Prescription" color="primary" />
           <QuickAction to="/health-profile" icon={Activity} label="Update Profile" color="secondary" />
-          <QuickAction to="/pharmacies" icon={Calendar} label="Find Pharmacy" color="accent" />
+          <QuickAction to="/find-nearby" icon={MapPin} label="Find Pharmacy" color="accent" />
           <QuickAction to="/prescriptions" icon={FileText} label="View History" color="success" />
         </div>
       </motion.div>
@@ -558,6 +613,13 @@ function getGreeting() {
   if (hour < 12) return 'morning'
   if (hour < 17) return 'afternoon'
   return 'evening'
+}
+
+function getGreetingKey() {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'good_morning'
+  if (hour < 17) return 'good_afternoon'
+  return 'good_evening'
 }
 
 function formatDate(dateStr) {

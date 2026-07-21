@@ -1,0 +1,531 @@
+# backend/users/views_professional.py
+# CREATE this new file
+
+from rest_framework import views, generics, status
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.db import transaction
+from datetime import date
+
+from .models import User, PatientAccessToken, DoctorProfile, LaboratoryProfile, HealthProfile
+from .serializers import (
+    RequestPatientAccessSerializer, VerifyOTPSerializer, 
+    PatientSummarySerializer, DoctorProfileSerializer, LaboratoryProfileSerializer,
+    HealthProfileSerializer
+)
+from prescriptions.models import Prescription, PrescriptionDrug, LabReport
+from prescriptions.serializers import PrescriptionListSerializer, PrescriptionDetailSerializer
+from prescriptions.email_service import EmailService
+from prescriptions.services import AzureServices
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# ============================================
+# PERMISSION CLASSES
+# ============================================
+
+class IsDoctorUser:
+    """Permission class for doctor-only views"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'doctor'
+
+
+class IsLaboratoryUser:
+    """Permission class for laboratory-only views"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'laboratory'
+
+
+class IsPharmacyUser:
+    """Permission class for pharmacy-only views"""
+    def has_permission(self, request, view):
+        return request.user.is_authenticated and request.user.role == 'pharmacy'
+
+
+# ============================================
+# DOCTOR VIEWS
+# ============================================
+
+class DoctorProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update doctor's own profile"""
+    serializer_class = DoctorProfileSerializer
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def get_object(self):
+        profile, _ = DoctorProfile.objects.get_or_create(
+            user=self.request.user,
+            defaults={
+                'full_name': f"{self.request.user.first_name} {self.request.user.last_name}",
+                'specialization': '',
+                'qualification': '',
+                'registration_number': f"TEMP-{self.request.user.id}"
+            }
+        )
+        return profile
+
+
+class RequestPatientAccessView(views.APIView):
+    """
+    Doctor requests access to patient's medical history.
+    Sends OTP to patient's email.
+    """
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def post(self, request):
+        serializer = RequestPatientAccessSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        patient_email = serializer.validated_data['patient_email']
+        purpose = serializer.validated_data['purpose']
+        
+        # Find patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'No patient found with this email address'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Create access token with OTP
+        token = PatientAccessToken.create_access_request(
+            patient=patient,
+            requester=request.user,
+            purpose=purpose
+        )
+        
+        # Get doctor name
+        try:
+            doctor_name = f"Dr. {request.user.doctor_profile.full_name}"
+        except:
+            doctor_name = request.user.email
+        
+        # Send OTP email to patient
+        EmailService.send_otp_email(
+            patient_email=patient.email,
+            otp_code=token.otp_code,
+            requester_name=doctor_name,
+            purpose=purpose
+        )
+        
+        return Response({
+            'message': f'OTP sent to patient at {patient_email}',
+            'token_id': str(token.id),
+            'expires_in_minutes': 10
+        })
+
+
+class VerifyPatientOTPView(views.APIView):
+    """
+    Verify OTP and get access to patient data.
+    Returns a session token for accessing patient history.
+    """
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def post(self, request):
+        serializer = VerifyOTPSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        patient_email = serializer.validated_data['patient_email']
+        otp_code = serializer.validated_data['otp_code']
+        
+        # Find the most recent access token for this patient/doctor
+        token = PatientAccessToken.objects.filter(
+            patient__email=patient_email,
+            requester=request.user,
+            is_used=False,
+            is_expired=False
+        ).order_by('-created_at').first()
+        
+        if not token:
+            return Response(
+                {'error': 'No pending access request found. Please request access first.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Verify OTP
+        success, message = token.verify_otp(otp_code)
+        
+        if not success:
+            return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Return patient summary
+        patient = token.patient
+        return Response({
+            'message': 'Access granted',
+            'access_token_id': str(token.id),
+            'patient': PatientSummarySerializer(patient).data,
+            'access_expires_at': timezone.now() + timezone.timedelta(hours=1)  # 1 hour session
+        })
+
+
+class ViewPatientHistoryView(views.APIView):
+    """
+    View patient's prescription and report history.
+    Requires valid access token from OTP verification.
+    """
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def get(self, request, patient_id):
+        # Verify doctor has access to this patient
+        access_token = PatientAccessToken.objects.filter(
+            patient_id=patient_id,
+            requester=request.user,
+            access_granted=True,
+            access_granted_at__gte=timezone.now() - timezone.timedelta(hours=1)
+        ).first()
+        
+        if not access_token:
+            return Response(
+                {'error': 'Access denied. Please verify OTP to access patient data.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        patient = get_object_or_404(User, pk=patient_id, role='patient')
+        
+        # Get prescriptions
+        prescriptions = Prescription.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).order_by('-created_at')[:20]
+        
+        # Get lab reports
+        reports = LabReport.objects.filter(
+            user=patient,
+            is_duplicate=False
+        ).order_by('-created_at')[:20]
+        
+        # Get health profile
+        try:
+            health_profile = HealthProfileSerializer(patient.health_profile).data
+        except:
+            health_profile = None
+        
+        return Response({
+            'patient': {
+                'id': str(patient.id),
+                'email': patient.email,
+                'name': f"{patient.first_name} {patient.last_name}".strip() or patient.email
+            },
+            'health_profile': health_profile,
+            'prescriptions': PrescriptionListSerializer(prescriptions, many=True).data,
+            'lab_reports': [{
+                'id': str(r.id),
+                'report_type': r.report_type,
+                'report_title': r.report_title,
+                'report_date': r.report_date,
+                'laboratory_name': r.laboratory_name,
+                'status': r.status,
+                'created_at': r.created_at
+            } for r in reports]
+        })
+
+
+class CreateDigitalPrescriptionView(views.APIView):
+    """
+    Doctor creates a digital prescription for a patient.
+    No image upload - prescription is created directly from structured data.
+    """
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    @transaction.atomic
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        medications = request.data.get('medications', [])
+        notes = request.data.get('notes', '')
+        send_email = request.data.get('send_email', True)
+        
+        if not patient_email:
+            return Response({'error': 'Patient email is required'}, status=400)
+        
+        if not medications:
+            return Response({'error': 'At least one medication is required'}, status=400)
+        
+        # Find patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Get doctor info
+        try:
+            doctor_profile = request.user.doctor_profile
+            doctor_name = f"Dr. {doctor_profile.full_name}"
+            clinic_name = doctor_profile.clinic_name
+        except:
+            doctor_name = f"{request.user.first_name} {request.user.last_name}".strip()
+            clinic_name = ""
+        
+        # Create prescription
+        prescription = Prescription.objects.create(
+            user=patient,
+            source='doctor',
+            sent_by=request.user,
+            is_digital=True,
+            doctor_name=doctor_name,
+            clinic_name=clinic_name,
+            prescription_date=date.today(),
+            image_url='',  # No image for digital
+            blob_name='',
+            file_type='digital',
+            status='analyzed',
+            notes=notes,
+            digital_signature=f"Digitally signed by {doctor_name} on {date.today()}"
+        )
+        
+        # Create drug records
+        for med_data in medications:
+            PrescriptionDrug.objects.create(
+                prescription=prescription,
+                drug_name=med_data.get('drug_name', ''),
+                generic_name=med_data.get('generic_name', ''),
+                dosage=med_data.get('dosage', ''),
+                frequency=med_data.get('frequency', ''),
+                duration=med_data.get('duration', ''),
+                quantity=med_data.get('quantity'),
+                instructions=med_data.get('instructions', ''),
+                category=med_data.get('category', 'other')
+            )
+        
+        # Generate content hash for duplicate detection
+        prescription.content_hash = prescription.generate_content_hash()
+        
+        # Check for duplicates
+        if prescription.check_and_mark_duplicate():
+            # Still save but mark as duplicate
+            prescription.notes += "\n[Note: Similar prescription already exists in patient's history]"
+        
+        prescription.save()
+        
+        # Send email notification
+        if send_email and patient.receive_email_notifications:
+            EmailService.send_prescription_email(
+                prescription=prescription,
+                recipient_email=patient.email,
+                sender_name=doctor_name,
+                sender_type='doctor'
+            )
+        
+        return Response({
+            'message': 'Prescription created successfully',
+            'prescription_id': str(prescription.id),
+            'is_duplicate': prescription.is_duplicate,
+            'email_sent': send_email and patient.receive_email_notifications
+        }, status=201)
+
+
+class DoctorUploadPrescriptionView(views.APIView):
+    """
+    Doctor uploads a prescription image/PDF and sends to patient.
+    """
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated, IsDoctorUser]
+    
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        file = request.FILES.get('file')
+        send_email = request.data.get('send_email', 'true').lower() == 'true'
+        
+        if not patient_email:
+            return Response({'error': 'Patient email is required'}, status=400)
+        
+        if not file:
+            return Response({'error': 'Prescription file is required'}, status=400)
+        
+        # Validate file
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+        if file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type'}, status=400)
+        
+        # Find patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Get doctor info
+        try:
+            doctor_profile = request.user.doctor_profile
+            doctor_name = f"Dr. {doctor_profile.full_name}"
+            clinic_name = doctor_profile.clinic_name
+        except:
+            doctor_name = f"{request.user.first_name} {request.user.last_name}".strip()
+            clinic_name = ""
+        
+        # Upload to Azure
+        azure_svc = AzureServices()
+        blob_name, blob_url = azure_svc.upload_prescription(file, str(patient.id))
+        
+        # Create prescription
+        prescription = Prescription.objects.create(
+            user=patient,
+            source='doctor',
+            sent_by=request.user,
+            doctor_name=doctor_name,
+            clinic_name=clinic_name,
+            prescription_date=date.today(),
+            image_url=blob_url,
+            blob_name=blob_name,
+            file_type='pdf' if file.content_type == 'application/pdf' else 'image',
+            status='uploaded'
+        )
+        
+        # Try OCR
+        try:
+            ocr_result = azure_svc.extract_text(blob_url)
+            prescription.ocr_raw_text = ocr_result.get('text', '')
+            prescription.ocr_confidence = ocr_result.get('confidence', 0)
+            prescription.save()
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
+        
+        # Send email
+        if send_email and patient.receive_email_notifications:
+            EmailService.send_prescription_email(
+                prescription=prescription,
+                recipient_email=patient.email,
+                sender_name=doctor_name,
+                sender_type='doctor'
+            )
+        
+        return Response({
+            'message': 'Prescription uploaded and sent to patient',
+            'prescription_id': str(prescription.id),
+            'email_sent': send_email and patient.receive_email_notifications
+        }, status=201)
+
+
+# ============================================
+# LABORATORY VIEWS
+# ============================================
+
+class LaboratoryProfileView(generics.RetrieveUpdateAPIView):
+    """Get or update laboratory's own profile"""
+    serializer_class = LaboratoryProfileSerializer
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get_object(self):
+        profile, _ = LaboratoryProfile.objects.get_or_create(
+            user=self.request.user,
+            defaults={
+                'name': self.request.user.email,
+                'license_number': f"TEMP-{self.request.user.id}",
+                'address': '',
+                'city': '',
+                'state': '',
+                'zip_code': ''
+            }
+        )
+        return profile
+
+
+class LabUploadReportView(views.APIView):
+    """Laboratory uploads a report and sends to patient."""
+    parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def post(self, request):
+        patient_email = request.data.get('patient_email')
+        file = request.FILES.get('file')
+        report_type = request.data.get('report_type', 'other')
+        report_title = request.data.get('report_title', 'Lab Report')
+        referring_doctor = request.data.get('referring_doctor', '')
+        send_email = request.data.get('send_email', 'true').lower() == 'true'
+        
+        if not patient_email:
+            return Response({'error': 'Patient email is required'}, status=400)
+        
+        if not file:
+            return Response({'error': 'Report file is required'}, status=400)
+        
+        # Validate file
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+        if file.content_type not in allowed_types:
+            return Response({'error': 'Invalid file type'}, status=400)
+        
+        # Find patient
+        try:
+            patient = User.objects.get(email=patient_email, role='patient')
+        except User.DoesNotExist:
+            return Response({'error': 'Patient not found'}, status=404)
+        
+        # Get lab info
+        try:
+            lab_profile = request.user.laboratory_profile
+            lab_name = lab_profile.name
+        except:
+            lab_name = request.user.email
+        
+        # Upload to Azure
+        azure_svc = AzureServices()
+        blob_name, blob_url = azure_svc.upload_prescription(file, str(patient.id))
+        
+        # Create report
+        report = LabReport.objects.create(
+            user=patient,
+            source='laboratory',
+            sent_by=request.user,
+            report_type=report_type,
+            report_title=report_title,
+            report_date=date.today(),
+            laboratory_name=lab_name,
+            referring_doctor=referring_doctor,
+            file_url=blob_url,
+            blob_name=blob_name,
+            file_type='pdf' if file.content_type == 'application/pdf' else 'image',
+            status='uploaded'
+        )
+        
+        # Try OCR
+        try:
+            ocr_result = azure_svc.extract_text(blob_url)
+            report.ocr_raw_text = ocr_result.get('text', '')
+            report.ocr_confidence = ocr_result.get('confidence', 0)
+            report.save()
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
+        
+        # Check for duplicates
+        report.content_hash = report.generate_content_hash()
+        report.check_and_mark_duplicate()
+        report.save()
+        
+        # Send email
+        if send_email and patient.receive_email_notifications:
+            EmailService.send_lab_report_email(
+                report=report,
+                recipient_email=patient.email,
+                sender_name=lab_name
+            )
+        
+        return Response({
+            'message': 'Report uploaded and sent to patient',
+            'report_id': str(report.id),
+            'is_duplicate': report.is_duplicate,
+            'email_sent': send_email and patient.receive_email_notifications
+        }, status=201)
+
+
+class LabDashboardView(views.APIView):
+    """Dashboard stats for laboratory"""
+    permission_classes = [IsAuthenticated, IsLaboratoryUser]
+    
+    def get(self, request):
+        reports = LabReport.objects.filter(sent_by=request.user)
+        today = date.today()
+        
+        return Response({
+            'total_reports_sent': reports.count(),
+            'reports_today': reports.filter(created_at__date=today).count(),
+            'reports_this_month': reports.filter(created_at__month=today.month).count(),
+            'report_types': list(
+                reports.values('report_type')
+                .annotate(count=models.Count('id'))
+                .order_by('-count')[:5]
+            )
+        })

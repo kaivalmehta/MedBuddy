@@ -18,11 +18,30 @@ class PatientDashboardView(views.APIView):
         
         today_doses = DoseLog.objects.filter(reminder__user=user, scheduled_time__date=today)
         
-        recent_prescriptions = Prescription.objects.filter(user=user).order_by('-created_at')[:5]
+        recent_prescriptions = Prescription.objects.filter(user=user).prefetch_related('drugs').order_by('-created_at')[:5]
         
         safety_concerns = Prescription.objects.filter(user=user, safety_score__lt=7, status='analyzed').count()
         
         pending_orders = PharmacyOrder.objects.filter(patient=user, status__in=['received', 'verified', 'preparing']).count()
+        
+        # Build detailed prescription data
+        recent_prescriptions_data = []
+        for p in recent_prescriptions:
+            drugs_count = p.drugs.count()
+            
+            recent_prescriptions_data.append({
+                'id': str(p.id),
+                'date': p.created_at.strftime('%Y-%m-%d'),  # Always use upload date
+                'created_at': p.created_at.isoformat(),
+                'prescription_date': p.prescription_date.isoformat() if p.prescription_date else None,
+                'doctor': p.doctor_name or '',
+                'clinic': p.clinic_name or '',
+                'status': p.status,
+                'safety_score': p.safety_score,
+                'drugs_count': drugs_count,
+                'is_digital': p.is_digital,
+                'image_url': p.image_url,
+            })
         
         return Response({
             'active_medications': active_reminders.count(),
@@ -31,13 +50,7 @@ class PatientDashboardView(views.APIView):
                 'taken': today_doses.filter(status='taken').count(),
                 'pending': today_doses.filter(status='pending').count()
             },
-            'recent_prescriptions': [{
-                'id': str(p.id),
-                'date': p.created_at.date(),
-                'doctor': p.doctor_name,
-                'status': p.status,
-                'safety_score': p.safety_score
-            } for p in recent_prescriptions],
+            'recent_prescriptions': recent_prescriptions_data,
             'safety_alerts': safety_concerns,
             'pending_orders': pending_orders
         })

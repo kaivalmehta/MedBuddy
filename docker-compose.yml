@@ -1,0 +1,149 @@
+# ============================================
+# MedBuddy - Docker Compose Configuration
+# For local development and testing
+# ============================================
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # PostgreSQL Database
+  # ==========================================
+  db:
+    image: postgres:15-alpine
+    container_name: medbuddy-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-medbuddy_db}
+      POSTGRES_USER: ${DB_USER:-medbuddy_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-medbuddy_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-medbuddy_user} -d ${DB_NAME:-medbuddy_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - medbuddy-network
+
+  # ==========================================
+  # Redis Cache (Optional)
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: medbuddy-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - medbuddy-network
+
+  # ==========================================
+  # Django Backend API
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: medbuddy-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,backend
+      - DB_NAME=${DB_NAME:-medbuddy_db}
+      - DB_USER=${DB_USER:-medbuddy_user}
+      - DB_PASSWORD=${DB_PASSWORD:-medbuddy_password}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost
+      - CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost
+      - FRONTEND_URL=http://localhost
+      # Azure Services (add your keys)
+      - AZURE_STORAGE_CONNECTION_STRING=${AZURE_STORAGE_CONNECTION_STRING}
+      - AZURE_STORAGE_CONTAINER_NAME=${AZURE_STORAGE_CONTAINER_NAME:-prescriptions}
+      - AZURE_VISION_ENDPOINT=${AZURE_VISION_ENDPOINT}
+      - AZURE_VISION_KEY=${AZURE_VISION_KEY}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}
+      - AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}
+      - AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION:-eastus}
+      - AZURE_MAPS_KEY=${AZURE_MAPS_KEY}
+      - AZURE_TRANSLATOR_KEY=${AZURE_TRANSLATOR_KEY}
+      - AZURE_TRANSLATOR_REGION=${AZURE_TRANSLATOR_REGION:-eastus}
+      - AZURE_COMMUNICATION_CONNECTION_STRING=${AZURE_COMMUNICATION_CONNECTION_STRING}
+      - AZURE_EMAIL_SENDER=${AZURE_EMAIL_SENDER}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - backend_static:/app/staticfiles
+    command: >
+      sh -c "python manage.py migrate --noinput --settings=medbuddy_api.settings_production &&
+             python manage.py collectstatic --noinput --settings=medbuddy_api.settings_production &&
+             gunicorn --bind 0.0.0.0:8000 --workers 4 --threads 2 --timeout 120 medbuddy_api.wsgi:application"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - medbuddy-network
+
+  # ==========================================
+  # React Frontend
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000/api
+    container_name: medbuddy-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - medbuddy-network
+
+# ==========================================
+# Volumes
+# ==========================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  backend_static:
+    driver: local
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  medbuddy-network:
+    driver: bridge

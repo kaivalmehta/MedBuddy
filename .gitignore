@@ -1,4 +1,21 @@
+# ============================================
+# MedBuddy - Git Ignore
+# ============================================
+
+# ==========================================
+# Environment & Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+.env.production
+*.pem
+*.key
+secrets/
+
+# ==========================================
 # Python
+# ==========================================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -20,69 +37,110 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual environments
 venv/
 ENV/
 env/
 .venv/
 
+# PyInstaller
+*.manifest
+*.spec
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# ==========================================
 # Django
+# ==========================================
 *.log
 local_settings.py
 db.sqlite3
-media/
+db.sqlite3-journal
 staticfiles/
+media/
+logs/
+*.pot
+*.mo
 
-# Environment variables
-.env
-.env.local
-.env.*.local
-*.env
+# ==========================================
+# Node.js / Frontend
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
 
-# IDE
+# Build output
+frontend/dist/
+frontend/build/
+*.local
+
+# ==========================================
+# IDE & Editor
+# ==========================================
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
+
+# ==========================================
+# OS Generated
+# ==========================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.bak
 
-# Node.js
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# ==========================================
+# Docker
+# ==========================================
+.docker/
 
-# React/Vite build
-frontend/dist/
-frontend/build/
-*.local
-
-# Logs
-logs/
-*.log
-
-# Coverage
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-
-# Secrets & Keys
-*.pem
-*.key
-secrets.json
-
-# Database
-*.sqlite3
-*.db
-
-# Byte-compiled files
-*.pyc
-
+# ==========================================
 # Azure
+# ==========================================
 .azure/
+*.publishsettings
+
+# ==========================================
+# Testing
+# ==========================================
+coverage/
+.coverage
+*.cover
+*.py,cover
+.hypothesis/
+.tox/
+.nox/
+
+# ==========================================
+# Jupyter Notebooks
+# ==========================================
+.ipynb_checkpoints
+*.ipynb
+
+# ==========================================
+# Misc
+# ==========================================
+*.bak
+*.tmp
+*.temp
+.cache/
